@@ -216,7 +216,7 @@ function ActiveCityPanel({ city, onOpenList, loading }) {
         <div className="mt-3 text-xs text-white/38">Обновлено {city.updatedAt || 'только что'}</div>
       </button>
 
-      <div className="mt-5 rounded-2xl border border-line bg-white/[0.035] p-4">
+      <div className="mt-5 min-w-0 rounded-2xl border border-line bg-white/[0.035] p-3">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white/70">Последние подписали</h3>
           <span className="text-xs text-mint/70">{recentSigned.length ? `${recentSigned.length} из 10` : 'нет данных'}</span>
@@ -224,13 +224,22 @@ function ActiveCityPanel({ city, onOpenList, loading }) {
         {recentSigned.length ? (
           <div className={`grid gap-2 transition duration-200 ${loading ? 'blur-sm opacity-35' : ''}`}>
             {recentSigned.map((child) => (
-              <div key={`${child.id}-recent`} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold">{child.name}</p>
-                  <p className="mt-0.5 truncate text-[11px] text-white/36">{child.circle} - {child.group}</p>
+              <article key={`${child.id}-recent`} className="min-w-0 rounded-2xl border border-line bg-white/[0.045] p-3">
+                <div className="flex min-w-0 gap-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-mint/25 bg-mint/12 text-mint">
+                    <UserRound size={17} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <h4 className="min-w-0 break-words text-xs font-semibold leading-4">{child.name}</h4>
+                      <span className="shrink-0 rounded-full bg-mint/10 px-2 py-1 text-[10px] font-bold text-mint">
+                        {formatSignedAt(child.signedAt) || 'подписал'}
+                      </span>
+                    </div>
+                    <p className="mt-1 break-words text-[11px] leading-4 text-white/38">{child.circle} - {child.group}</p>
+                  </div>
                 </div>
-                <span className="shrink-0 text-[11px] text-mint">{formatSignedAt(child.signedAt) || 'подписал'}</span>
-              </div>
+              </article>
             ))}
           </div>
         ) : (
