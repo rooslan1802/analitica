@@ -19,6 +19,7 @@ export default defineConfig({
               ok: damubala.ok || artsport.ok,
               source: [damubala.ok ? 'damubala' : null, artsport.ok ? 'artsport' : null].filter(Boolean).join('+'),
               updatedAt: new Date().toLocaleString('ru-RU', {
+                timeZone: 'Asia/Almaty',
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric',

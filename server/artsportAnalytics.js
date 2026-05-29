@@ -282,6 +282,7 @@ export async function getArtsportSummary() {
     ok: sourceResults.length > 0,
     source: 'artsport',
     updatedAt: new Date().toLocaleString('ru-RU', {
+      timeZone: 'Asia/Almaty',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

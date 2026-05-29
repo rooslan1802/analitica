@@ -345,6 +345,7 @@ export async function getDamubalaSummary() {
     ok: cities.length > 0,
     source: 'damubala',
     updatedAt: new Date().toLocaleString('ru-RU', {
+      timeZone: 'Asia/Almaty',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
