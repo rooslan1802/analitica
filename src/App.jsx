@@ -250,7 +250,6 @@ function ChildrenModal({ payload, onClose }) {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Поиск по ребенку, кружку или телефону"
               className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/32"
-              autoFocus
             />
           </label>
         </div>
