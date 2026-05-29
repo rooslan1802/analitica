@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html {
+  background: #05070d;
+}
+
+body {
+  margin: 0;
+  background: #05070d;
+  overscroll-behavior-y: none;
+}
+
+button {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.scanline::before {
+  animation: scan 5.5s ease-in-out infinite;
+  background: linear-gradient(180deg, transparent, rgba(73, 242, 186, 0.12), transparent);
+  content: '';
+  height: 28%;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: -30%;
+}
+
+@keyframes scan {
+  0%,
+  20% {
+    transform: translateY(0);
+  }
+  70%,
+  100% {
+    transform: translateY(470%);
+  }
+}
