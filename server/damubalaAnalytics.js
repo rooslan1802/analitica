@@ -29,9 +29,6 @@ function getAccounts() {
   ];
 }
 
-let cachedSummary = null;
-let cachedAt = 0;
-
 function jsonHeaders(token) {
   return {
     accept: 'application/json, text/plain, */*',
@@ -234,6 +231,30 @@ function pickGroupName(sheet) {
   return sheet?.class?.commentRu || sheet?.class?.commentKz || 'группа';
 }
 
+function pickSignedAt(item) {
+  return (
+    item?.signedAt ||
+    item?.signDate ||
+    item?.signedDate ||
+    item?.updatedAt ||
+    item?.modifiedAt ||
+    item?.createdAt ||
+    item?.dateCreate ||
+    item?.createdDate ||
+    ''
+  );
+}
+
+function sortRecentSigned(children) {
+  return [...children]
+    .sort((left, right) => {
+      const leftTime = new Date(left.signedAt || 0).getTime() || 0;
+      const rightTime = new Date(right.signedAt || 0).getTime() || 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, 10);
+}
+
 async function mapWithConcurrency(items, limit, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -291,7 +312,8 @@ async function countAccount(account) {
       name: childName(item) || 'Без ФИО',
       circle: pickDirectionName(sheet),
       group: pickGroupName(sheet),
-      phone: item?.phoneNumber || ''
+      phone: item?.phoneNumber || '',
+      signedAt: pickSignedAt(item)
     });
     const parentRows = history.filter((item) => String(item?.role || '').toUpperCase() === 'PARENT' && item?.childId);
     record.unsignedChildren.push(
@@ -306,21 +328,20 @@ async function countAccount(account) {
     );
   });
 
-  return Array.from(cityMap.values());
+  return Array.from(cityMap.values()).map((city) => ({
+    ...city,
+    recentSignedChildren: sortRecentSigned(city.signedChildren)
+  }));
 }
 
-export async function getDamubalaSummary({ force = false } = {}) {
-  if (!force && cachedSummary && Date.now() - cachedAt < 60_000) {
-    return { ...cachedSummary, cached: true };
-  }
-
+export async function getDamubalaSummary() {
   const settled = await Promise.allSettled(getAccounts().map((account) => countAccount(account)));
   const cities = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
   const errors = settled
     .filter((result) => result.status === 'rejected')
     .map((result) => result.reason?.message || 'Ошибка Damubala');
 
-  cachedSummary = {
+  return {
     ok: cities.length > 0,
     source: 'damubala',
     updatedAt: new Date().toLocaleString('ru-RU', {
@@ -333,6 +354,4 @@ export async function getDamubalaSummary({ force = false } = {}) {
     cities,
     errors
   };
-  cachedAt = Date.now();
-  return cachedSummary;
 }

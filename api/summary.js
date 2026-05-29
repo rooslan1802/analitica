@@ -3,13 +3,14 @@ import { getDamubalaSummary } from '../server/damubalaAnalytics.js';
 
 export default async function handler(req, res) {
   try {
-    const force = req.query?.refresh === '1';
     const [damubala, artsport] = await Promise.all([
-      getDamubalaSummary({ force }),
-      getArtsportSummary({ force })
+      getDamubalaSummary(),
+      getArtsportSummary()
     ]);
 
-    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.status(200).json({
       ok: damubala.ok || artsport.ok,
       source: [damubala.ok ? 'damubala' : null, artsport.ok ? 'artsport' : null].filter(Boolean).join('+'),

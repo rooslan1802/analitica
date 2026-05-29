@@ -30,9 +30,6 @@ function getSources() {
   ];
 }
 
-let cachedSummary = null;
-let cachedAt = 0;
-
 function splitSetCookie(value) {
   return String(value || '')
     .split(/,(?=\s*[^;=]+=[^;]+)/)
@@ -120,6 +117,10 @@ function cleanOrderText(text) {
   return cleanText(text)
     .replace(/^\d+\s+—\s+/, '')
     .trim();
+}
+
+function latestTen(children) {
+  return [...children].slice(-10).reverse();
 }
 
 async function login(source) {
@@ -265,11 +266,7 @@ async function countSource(source) {
   };
 }
 
-export async function getArtsportSummary({ force = false } = {}) {
-  if (!force && cachedSummary && Date.now() - cachedAt < 60_000) {
-    return { ...cachedSummary, cached: true };
-  }
-
+export async function getArtsportSummary() {
   const settled = await Promise.allSettled(getSources().map((source) => countSource(source)));
   const sourceResults = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
   const errors = settled
@@ -281,7 +278,7 @@ export async function getArtsportSummary({ force = false } = {}) {
   const signed = signedChildren.length;
   const unsigned = unsignedChildren.length;
 
-  cachedSummary = {
+  return {
     ok: sourceResults.length > 0,
     source: 'artsport',
     updatedAt: new Date().toLocaleString('ru-RU', {
@@ -303,11 +300,10 @@ export async function getArtsportSummary({ force = false } = {}) {
         totalSheets: signed + unsigned,
         signedChildren,
         unsignedChildren,
+        recentSignedChildren: latestTen(signedChildren),
         sources: sourceResults.map(({ signedChildren: _signedChildren, unsignedChildren: _unsignedChildren, ...item }) => item)
       }
     ],
     errors
   };
-  cachedAt = Date.now();
-  return cachedSummary;
 }

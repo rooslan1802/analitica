@@ -3,6 +3,7 @@ import {
   BarChart3,
   Clock3,
   Database,
+  MessageCircle,
   Minus,
   Phone,
   RefreshCw,
@@ -22,18 +23,30 @@ function mergeCities(baseCities, apiCities = []) {
     if (!live) return city;
     const signedChildren = (live.signedChildren || []).map((child) => ({ ...child, status: 'signed' }));
     const unsignedChildren = (live.unsignedChildren || []).map((child) => ({ ...child, status: 'unsigned' }));
+    const recentSignedChildren = [...(live.recentSignedChildren || signedChildren)]
+      .map((child) => ({ ...child, status: 'signed' }))
+      .slice(0, 10);
     return {
       ...city,
       ...live,
       signedChildren,
       unsignedChildren,
+      recentSignedChildren,
       allChildren: [...signedChildren, ...unsignedChildren],
       totalSheets: Number(live.signed || 0) + Number(live.unsigned || 0)
     };
   });
 }
 
-function CityButton({ city, selected, onClick }) {
+function LoadingNumber({ children, loading, className = '' }) {
+  return (
+    <span className={`inline-block transition duration-200 ${loading ? 'select-none blur-md opacity-20' : ''} ${className}`}>
+      {children}
+    </span>
+  );
+}
+
+function CityButton({ city, selected, onClick, loading }) {
   return (
     <button
       type="button"
@@ -49,24 +62,34 @@ function CityButton({ city, selected, onClick }) {
       </span>
       {city.status === 'active' ? (
         <span className="mt-2 flex items-center gap-2 text-[11px] font-semibold">
-          <span className="text-mint">{city.signed || 0}</span>
+          <span className="text-mint"><LoadingNumber loading={loading}>{city.signed || 0}</LoadingNumber></span>
           <span className="text-white/22">/</span>
-          <span className="text-coral">{city.unsigned || 0}</span>
+          <span className="text-coral"><LoadingNumber loading={loading}>{city.unsigned || 0}</LoadingNumber></span>
         </span>
       ) : null}
     </button>
   );
 }
 
-function formatPhone(phone) {
+function phoneDigits(phone) {
   let digits = String(phone || '').replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('8')) {
-    digits = `7${digits.slice(1)}`;
-  }
+  if (digits.length === 11 && digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+  return digits;
+}
+
+function formatPhone(phone) {
+  const digits = phoneDigits(phone);
   if (digits.length === 11) {
     return `+${digits[0]} ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 9)} ${digits.slice(9)}`;
   }
   return phone || 'телефон не указан';
+}
+
+function formatSignedAt(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
 }
 
 function ProgressRing({ percent }) {
@@ -103,8 +126,9 @@ function ProgressRing({ percent }) {
   );
 }
 
-function ActiveCityPanel({ city, onOpenList }) {
+function ActiveCityPanel({ city, onOpenList, loading }) {
   const percent = Math.round((city.signed / Math.max(city.totalSheets, 1)) * 100);
+  const recentSigned = city.recentSignedChildren || [];
 
   return (
     <motion.section
@@ -134,7 +158,9 @@ function ActiveCityPanel({ city, onOpenList }) {
           className="rounded-2xl border border-mint/25 bg-mint/12 p-4 text-left shadow-[0_0_34px_rgba(73,242,186,.18)] transition active:scale-[0.98]"
         >
           <p className="text-xs text-white/52">Подписано</p>
-          <strong className="mt-2 block text-4xl font-black text-mint drop-shadow-[0_0_16px_rgba(73,242,186,.55)]">{city.signed}</strong>
+          <strong className="mt-2 block text-4xl font-black text-mint drop-shadow-[0_0_16px_rgba(73,242,186,.55)]">
+            <LoadingNumber loading={loading}>{city.signed}</LoadingNumber>
+          </strong>
         </button>
         <button
           type="button"
@@ -142,7 +168,9 @@ function ActiveCityPanel({ city, onOpenList }) {
           className="rounded-2xl border border-coral/25 bg-coral/12 p-4 text-left shadow-[0_0_34px_rgba(255,112,102,.18)] transition active:scale-[0.98]"
         >
           <p className="text-xs text-white/52">Не подписано</p>
-          <strong className="mt-2 block text-4xl font-black text-coral drop-shadow-[0_0_16px_rgba(255,112,102,.55)]">{city.unsigned}</strong>
+          <strong className="mt-2 block text-4xl font-black text-coral drop-shadow-[0_0_16px_rgba(255,112,102,.55)]">
+            <LoadingNumber loading={loading}>{city.unsigned}</LoadingNumber>
+          </strong>
         </button>
       </div>
 
@@ -157,9 +185,9 @@ function ActiveCityPanel({ city, onOpenList }) {
             >
               <span className="text-sm font-semibold">{source.name}</span>
               <span className="flex items-center gap-2 text-sm font-bold">
-                <span className="text-mint">{source.signed || 0}</span>
+                <span className="text-mint"><LoadingNumber loading={loading}>{source.signed || 0}</LoadingNumber></span>
                 <span className="text-white/24">/</span>
-                <span className="text-coral">{source.unsigned || 0}</span>
+                <span className="text-coral"><LoadingNumber loading={loading}>{source.unsigned || 0}</LoadingNumber></span>
               </span>
             </button>
           ))}
@@ -173,7 +201,9 @@ function ActiveCityPanel({ city, onOpenList }) {
       >
         <div className="mb-3 flex items-center justify-between text-sm">
           <span className="text-white/58">Ход подписания</span>
-          <span className="font-semibold">{city.signed} / {city.totalSheets}</span>
+          <span className="font-semibold">
+            <LoadingNumber loading={loading}>{city.signed} / {city.totalSheets}</LoadingNumber>
+          </span>
         </div>
         <div className="h-3 overflow-hidden rounded-full bg-white/10">
           <motion.div
@@ -185,12 +215,89 @@ function ActiveCityPanel({ city, onOpenList }) {
         </div>
         <div className="mt-3 text-xs text-white/38">Обновлено {city.updatedAt || 'только что'}</div>
       </button>
+
+      <div className="mt-5 rounded-2xl border border-line bg-white/[0.035] p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white/70">Последние подписали</h3>
+          <span className="text-xs text-mint/70">{recentSigned.length ? `${recentSigned.length} из 10` : 'нет данных'}</span>
+        </div>
+        {recentSigned.length ? (
+          <div className={`grid gap-2 transition duration-200 ${loading ? 'blur-sm opacity-35' : ''}`}>
+            {recentSigned.map((child) => (
+              <div key={`${child.id}-recent`} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.035] px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold">{child.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-white/36">{child.circle} - {child.group}</p>
+                </div>
+                <span className="shrink-0 text-[11px] text-mint">{formatSignedAt(child.signedAt) || 'подписал'}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-white/36">После обновления здесь появятся последние подписавшие.</p>
+        )}
+      </div>
     </motion.section>
+  );
+}
+
+function PhoneActionSheet({ child, onClose }) {
+  if (!child) return null;
+  const digits = phoneDigits(child.phone);
+  const canUsePhone = digits.length === 11;
+  const telHref = canUsePhone ? `tel:+${digits}` : undefined;
+  const whatsappHref = canUsePhone ? `https://wa.me/${digits}` : undefined;
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[60] flex items-end bg-black/58 px-3 pb-3 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClose();
+      }}
+    >
+      <motion.section
+        initial={{ y: 24 }}
+        animate={{ y: 0 }}
+        exit={{ y: 24 }}
+        className="mx-auto w-full max-w-md rounded-[26px] border border-line bg-panel p-4 shadow-panel"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <p className="text-xs uppercase tracking-[0.18em] text-white/36">Контакт</p>
+        <h3 className="mt-1 text-lg font-bold">{child.name}</h3>
+        <p className="mt-1 text-sm text-white/50">{formatPhone(child.phone)}</p>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <a
+            href={telHref}
+            className={`flex items-center justify-center gap-2 rounded-2xl border border-mint/25 bg-mint/12 px-4 py-3 text-sm font-bold text-mint ${canUsePhone ? '' : 'pointer-events-none opacity-40'}`}
+          >
+            <Phone size={18} />
+            Позвонить
+          </a>
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noreferrer"
+            className={`flex items-center justify-center gap-2 rounded-2xl border border-mint/25 bg-mint/12 px-4 py-3 text-sm font-bold text-mint ${canUsePhone ? '' : 'pointer-events-none opacity-40'}`}
+          >
+            <MessageCircle size={18} />
+            WhatsApp
+          </a>
+        </div>
+        <button type="button" onClick={onClose} className="mt-3 w-full rounded-2xl bg-white/[0.06] px-4 py-3 text-sm text-white/60">
+          Закрыть
+        </button>
+      </motion.section>
+    </motion.div>
   );
 }
 
 function ChildrenModal({ payload, onClose }) {
   const [query, setQuery] = useState('');
+  const [phoneChild, setPhoneChild] = useState(null);
   if (!payload?.city) return null;
   const { city, type, source } = payload;
   const isSigned = type === 'signed';
@@ -271,10 +378,14 @@ function ChildrenModal({ payload, onClose }) {
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-white/42">{child.circle} - {child.group}</p>
-                      <p className="mt-2 flex items-center gap-2 text-xs text-white/64">
+                      <button
+                        type="button"
+                        onClick={() => setPhoneChild(child)}
+                        className="mt-2 flex items-center gap-2 text-left text-xs text-white/64 transition active:scale-[0.99]"
+                      >
                         <Phone size={13} className="text-mint" />
                         {formatPhone(child.phone)}
-                      </p>
+                      </button>
                     </div>
                   </div>
                 </article>
@@ -285,6 +396,9 @@ function ChildrenModal({ payload, onClose }) {
           )}
         </div>
       </motion.section>
+      <AnimatePresence>
+        {phoneChild ? <PhoneActionSheet child={phoneChild} onClose={() => setPhoneChild(null)} /> : null}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -330,7 +444,15 @@ function App() {
     setIsLoading(true);
     setWaitLeft(force ? 12 : 9);
     try {
-      const response = await fetch(force ? '/api/summary?refresh=1' : '/api/summary');
+      const params = new URLSearchParams({ _: String(Date.now()) });
+      if (force) params.set('refresh', '1');
+      const response = await fetch(`/api/summary?${params.toString()}`, {
+        cache: 'no-store',
+        headers: {
+          'cache-control': 'no-cache',
+          pragma: 'no-cache'
+        }
+      });
       if (!response.ok) throw new Error('api');
       const payload = await response.json();
       if (payload?.cities?.length) {
@@ -404,7 +526,9 @@ function App() {
               <div>
                 <p className="text-sm text-white/48">Сводка по активным городам</p>
                 <div className="mt-2 flex items-end gap-2">
-                  <strong className="text-5xl font-black tracking-tight">{allSheets}</strong>
+          <strong className="text-5xl font-black tracking-tight">
+            <LoadingNumber loading={isLoading}>{allSheets}</LoadingNumber>
+          </strong>
                   <span className="pb-2 text-sm text-sky">ваучеров всего</span>
                 </div>
               </div>
@@ -415,11 +539,15 @@ function App() {
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-mint/25 bg-mint/12 p-3 shadow-[0_0_32px_rgba(73,242,186,.18)]">
                 <p className="text-xs text-mint/90">Подписало</p>
-                <strong className="mt-1 block text-3xl font-black text-mint drop-shadow-[0_0_16px_rgba(73,242,186,.58)]">{allSigned}</strong>
+                <strong className="mt-1 block text-3xl font-black text-mint drop-shadow-[0_0_16px_rgba(73,242,186,.58)]">
+                  <LoadingNumber loading={isLoading}>{allSigned}</LoadingNumber>
+                </strong>
               </div>
               <div className="rounded-2xl border border-coral/25 bg-coral/12 p-3 shadow-[0_0_32px_rgba(255,112,102,.18)]">
                 <p className="text-xs text-coral/90">Не подписало</p>
-                <strong className="mt-1 block text-3xl font-black text-coral drop-shadow-[0_0_16px_rgba(255,112,102,.58)]">{allUnsigned}</strong>
+                <strong className="mt-1 block text-3xl font-black text-coral drop-shadow-[0_0_16px_rgba(255,112,102,.58)]">
+                  <LoadingNumber loading={isLoading}>{allUnsigned}</LoadingNumber>
+                </strong>
               </div>
             </div>
           </div>
@@ -432,7 +560,7 @@ function App() {
           </div>
           <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
             {cities.map((city) => (
-              <CityButton key={city.id} city={city} selected={selectedId === city.id} onClick={() => setSelectedId(city.id)} />
+              <CityButton key={city.id} city={city} selected={selectedId === city.id} onClick={() => setSelectedId(city.id)} loading={isLoading} />
             ))}
           </div>
         </section>
@@ -440,7 +568,7 @@ function App() {
         <div className="mt-4">
           <AnimatePresence mode="wait">
             {selectedCity.status === 'active' ? (
-              <ActiveCityPanel city={selectedCity} onOpenList={(city, type, source) => setChildrenList({ city, type, source })} />
+              <ActiveCityPanel city={selectedCity} loading={isLoading} onOpenList={(city, type, source) => setChildrenList({ city, type, source })} />
             ) : (
               <StubPanel city={selectedCity} />
             )}

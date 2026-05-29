@@ -11,11 +11,9 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use('/api/summary', async (req, res) => {
           try {
-            const url = new URL(req.url || '', 'http://localhost');
-            const force = url.searchParams.get('refresh') === '1';
             const [damubala, artsport] = await Promise.all([
-              getDamubalaSummary({ force }),
-              getArtsportSummary({ force })
+              getDamubalaSummary(),
+              getArtsportSummary()
             ]);
             const payload = {
               ok: damubala.ok || artsport.ok,
@@ -30,6 +28,9 @@ export default defineConfig({
               cities: [...(damubala.cities || []), ...(artsport.cities || [])],
               errors: [...(damubala.errors || []), ...(artsport.errors || [])]
             };
+            res.setHeader('cache-control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('pragma', 'no-cache');
+            res.setHeader('expires', '0');
             res.setHeader('content-type', 'application/json; charset=utf-8');
             res.end(JSON.stringify(payload));
           } catch (error) {
