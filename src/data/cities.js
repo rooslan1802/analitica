@@ -54,10 +54,17 @@ export const platformCities = [
   {
     id: 'astana',
     name: 'Астана',
-    status: 'stub',
-    children: [
-      { id: 'astana-dreamus', name: 'Дримус' },
-      { id: 'astana-shabyt', name: 'Шабыт' }
+    platform: 'Qosymsha',
+    region: 'Астана',
+    status: 'active',
+    signed: 0,
+    unsigned: 0,
+    totalSheets: 0,
+    signedChildren: [],
+    unsignedChildren: [],
+    sources: [
+      { id: 'astana-shabyt', name: 'Шабыт', signed: 0, unsigned: 0 },
+      { id: 'astana-dreamus', name: 'Дримус', signed: 0, unsigned: 0 }
     ]
   }
 ];
