@@ -147,7 +147,8 @@ async function fetchRows(jar, timesheetId) {
     id: String(timesheetId),
     page: '1',
     start: '0',
-    limit: '1000'
+    limit: '1000',
+    filter: JSON.stringify([{ property: 'GroupId', value: 0 }])
   });
   const data = await readJson(response);
   return Array.isArray(data?.result) ? data.result : [];
