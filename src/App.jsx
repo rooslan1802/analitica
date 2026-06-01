@@ -133,6 +133,79 @@ function ProgressRing({ percent }) {
   );
 }
 
+function ProgressButton({ title, signed, total, percent, updatedAt, loading, onClick, compact = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${compact ? 'mt-3' : 'mt-5'} w-full rounded-2xl border border-line bg-white/[0.04] p-4 text-left transition active:scale-[0.99]`}
+    >
+      <div className="mb-3 flex items-center justify-between text-sm">
+        <span className="text-white/58">{title}</span>
+        <span className="font-semibold">
+          <LoadingNumber loading={loading}>{signed} / {total}</LoadingNumber>
+        </span>
+      </div>
+      <div className="h-3 overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          className="h-full rounded-full bg-gradient-to-r from-mint to-sky"
+          initial={{ width: 0 }}
+          animate={{ width: `${percent}%` }}
+          transition={{ duration: 0.9, ease: 'easeOut' }}
+        />
+      </div>
+      {updatedAt ? <div className="mt-3 text-xs text-white/38">Обновлено {updatedAt}</div> : null}
+    </button>
+  );
+}
+
+function SourcePanel({ city, source, loading, onOpenList }) {
+  const signed = Number(source.signed || 0);
+  const unsigned = Number(source.unsigned || 0);
+  const total = signed + unsigned;
+  const percent = Math.round((signed / Math.max(total, 1)) * 100);
+
+  return (
+    <div className="rounded-3xl border border-line bg-white/[0.035] p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-base font-bold">{source.name}</h3>
+        <span className="text-xs text-white/36">{percent}% подписано</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => onOpenList(city, 'source-signed', source)}
+          className="rounded-2xl border border-mint/20 bg-mint/10 p-3 text-left shadow-[0_0_24px_rgba(73,242,186,.12)] transition active:scale-[0.98]"
+        >
+          <p className="text-xs text-white/52">Подписало</p>
+          <strong className="mt-1 block text-3xl font-black text-mint drop-shadow-[0_0_14px_rgba(73,242,186,.45)]">
+            <LoadingNumber loading={loading}>{signed}</LoadingNumber>
+          </strong>
+        </button>
+        <button
+          type="button"
+          onClick={() => onOpenList(city, 'source-unsigned', source)}
+          className="rounded-2xl border border-coral/20 bg-coral/10 p-3 text-left shadow-[0_0_24px_rgba(255,112,102,.12)] transition active:scale-[0.98]"
+        >
+          <p className="text-xs text-white/52">Не подписало</p>
+          <strong className="mt-1 block text-3xl font-black text-coral drop-shadow-[0_0_14px_rgba(255,112,102,.45)]">
+            <LoadingNumber loading={loading}>{unsigned}</LoadingNumber>
+          </strong>
+        </button>
+      </div>
+      <ProgressButton
+        title="Ход подписания"
+        signed={signed}
+        total={total}
+        percent={percent}
+        loading={loading}
+        compact
+        onClick={() => onOpenList(city, 'source', source)}
+      />
+    </div>
+  );
+}
+
 function ActiveCityPanel({ city, onOpenList, loading }) {
   const percent = Math.round((city.signed / Math.max(city.totalSheets, 1)) * 100);
   const recentSigned = city.recentSignedChildren || [];
@@ -181,47 +254,29 @@ function ActiveCityPanel({ city, onOpenList, loading }) {
         </button>
       </div>
 
+      <ProgressButton
+        title="Общий ход подписания"
+        signed={city.signed}
+        total={city.totalSheets}
+        percent={percent}
+        updatedAt={city.updatedAt || 'только что'}
+        loading={loading}
+        onClick={() => onOpenList(city, 'all')}
+      />
+
       {city.sources?.length ? (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-4 grid gap-3">
           {city.sources.map((source) => (
-            <button
-              type="button"
+            <SourcePanel
               key={source.id}
-              onClick={() => onOpenList(city, 'source', source)}
-              className="flex items-center justify-between rounded-2xl border border-line bg-white/[0.04] px-4 py-3 text-left transition active:scale-[0.99]"
-            >
-              <span className="text-sm font-semibold">{source.name}</span>
-              <span className="flex items-center gap-2 text-sm font-bold">
-                <span className="text-mint"><LoadingNumber loading={loading}>{source.signed || 0}</LoadingNumber></span>
-                <span className="text-white/24">/</span>
-                <span className="text-coral"><LoadingNumber loading={loading}>{source.unsigned || 0}</LoadingNumber></span>
-              </span>
-            </button>
+              city={city}
+              source={source}
+              loading={loading}
+              onOpenList={onOpenList}
+            />
           ))}
         </div>
       ) : null}
-
-      <button
-        type="button"
-        onClick={() => onOpenList(city, 'all')}
-        className="mt-5 w-full rounded-2xl border border-line bg-white/[0.04] p-4 text-left transition active:scale-[0.99]"
-      >
-        <div className="mb-3 flex items-center justify-between text-sm">
-          <span className="text-white/58">Ход подписания</span>
-          <span className="font-semibold">
-            <LoadingNumber loading={loading}>{city.signed} / {city.totalSheets}</LoadingNumber>
-          </span>
-        </div>
-        <div className="h-3 overflow-hidden rounded-full bg-white/10">
-          <motion.div
-            className="h-full rounded-full bg-gradient-to-r from-mint to-sky"
-            initial={{ width: 0 }}
-            animate={{ width: `${percent}%` }}
-            transition={{ duration: 0.9, ease: 'easeOut' }}
-          />
-        </div>
-        <div className="mt-3 text-xs text-white/38">Обновлено {city.updatedAt || 'только что'}</div>
-      </button>
 
       <div className="mt-5 min-w-0 rounded-2xl border border-line bg-white/[0.035] p-3">
         <div className="mb-3 flex items-center justify-between">
@@ -311,24 +366,31 @@ function PhoneActionSheet({ child, onClose }) {
   );
 }
 
+function getModalChildren(city, type, source) {
+  if (type === 'signed') return city.signedChildren || [];
+  if (type === 'unsigned') return city.unsignedChildren || [];
+  if (type === 'source-signed') return (city.signedChildren || []).filter((child) => child.sourceId === source?.id);
+  if (type === 'source-unsigned') return (city.unsignedChildren || []).filter((child) => child.sourceId === source?.id);
+  if (type === 'source') return (city.allChildren || []).filter((child) => child.sourceId === source?.id);
+  return city.allChildren || [];
+}
+
 function ChildrenModal({ payload, onClose }) {
   const [query, setQuery] = useState('');
   const [phoneChild, setPhoneChild] = useState(null);
   if (!payload?.city) return null;
   const { city, type, source } = payload;
-  const isSigned = type === 'signed';
+  const isUnsignedList = type === 'unsigned' || type === 'source-unsigned';
   const title = type === 'signed'
     ? 'Подписали'
     : type === 'unsigned'
       ? 'Не подписали'
-      : source?.name || 'Все дети';
-  const children = type === 'signed'
-    ? city.signedChildren || []
-    : type === 'unsigned'
-      ? city.unsignedChildren || []
-      : type === 'source'
-        ? (city.allChildren || []).filter((child) => child.sourceId === source?.id)
-        : city.allChildren || [];
+      : type === 'source-signed'
+        ? `${source?.name} - подписали`
+        : type === 'source-unsigned'
+          ? `${source?.name} - не подписали`
+          : source?.name || 'Все дети';
+  const children = getModalChildren(city, type, source);
   const normalizedQuery = query.trim().toLowerCase().replace(/ё/g, 'е');
   const filteredChildren = normalizedQuery
     ? children.filter((child) => {
@@ -355,7 +417,7 @@ function ChildrenModal({ payload, onClose }) {
       >
         <div className="flex items-start justify-between gap-3 border-b border-line p-5">
           <div>
-            <p className={`text-xs uppercase tracking-[0.18em] ${type === 'unsigned' ? 'text-coral' : 'text-mint'}`}>
+            <p className={`text-xs uppercase tracking-[0.18em] ${isUnsignedList ? 'text-coral' : 'text-mint'}`}>
               {title}
             </p>
             <h2 className="mt-1 text-xl font-bold">{city.name}</h2>
