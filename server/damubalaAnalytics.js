@@ -159,6 +159,37 @@ async function getTimeSheets(headers, month, year) {
   return all;
 }
 
+function getActivePeriods() {
+  const now = new Date();
+  const almatyDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Almaty' }));
+  const current = {
+    month: almatyDate.getMonth() + 1,
+    year: almatyDate.getFullYear()
+  };
+  const previousDate = new Date(almatyDate);
+  previousDate.setMonth(previousDate.getMonth() - 1);
+  const previous = {
+    month: previousDate.getMonth() + 1,
+    year: previousDate.getFullYear()
+  };
+  return [current, previous];
+}
+
+async function getActiveTimeSheets(headers) {
+  const seen = new Set();
+  const all = [];
+  for (const period of getActivePeriods()) {
+    const sheets = await getTimeSheets(headers, period.month, period.year);
+    for (const sheet of sheets) {
+      const key = sheet?.id || `${period.year}-${period.month}-${all.length}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(sheet);
+    }
+  }
+  return all;
+}
+
 async function getSignatureHistory(attendanceId, headers) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await apiRequest(`/v1/timeSheet/GetSignatureHistoryV2/${attendanceId}`, {
@@ -274,8 +305,7 @@ async function mapWithConcurrency(items, limit, mapper) {
 async function countAccount(account) {
   const auth = await signInWithFallback(account);
   const headers = jsonHeaders(auth.token);
-  const now = new Date();
-  const sheets = await getTimeSheets(headers, now.getMonth() + 1, now.getFullYear());
+  const sheets = await getActiveTimeSheets(headers);
 
   const cityMap = new Map(
     account.cities.map((city) => [
