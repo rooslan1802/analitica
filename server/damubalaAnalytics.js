@@ -138,8 +138,7 @@ async function getTimeSheets(headers, month, year) {
   for (let page = 1; page <= 30; page += 1) {
     const params = new URLSearchParams({
       PageNumber: String(page),
-      PageSize: String(pageSize),
-      hVisitHistoryStatusIds: '1'
+      PageSize: String(pageSize)
     });
     if (month) params.set('month', String(month));
     if (year) params.set('year', String(year));
