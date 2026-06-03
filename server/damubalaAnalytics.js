@@ -190,12 +190,16 @@ async function getActiveTimeSheets(headers) {
 }
 
 async function getActCounts(headers) {
-  const response = await apiRequest('/v1/Act/GetCount', {
-    method: 'GET',
-    headers
-  }, 30000);
-  if (!response.ok) return null;
-  return readJson(response);
+  try {
+    const response = await apiRequest('/v1/Act/GetCount', {
+      method: 'GET',
+      headers
+    }, 30000);
+    if (!response.ok) return null;
+    return readJson(response);
+  } catch {
+    return null;
+  }
 }
 
 async function getSignatureHistory(attendanceId, headers) {
@@ -446,10 +450,8 @@ async function mapWithConcurrency(items, limit, mapper) {
 async function countAccount(account) {
   const auth = await signInWithFallback(account);
   const headers = jsonHeaders(auth.token);
-  const [sheets, actCounts] = await Promise.all([
-    getActiveTimeSheets(headers),
-    getActCounts(headers)
-  ]);
+  const sheets = await getActiveTimeSheets(headers);
+  const actCounts = await getActCounts(headers);
   const actStatusCounts = formatActStatusCounts(actCounts);
 
   const cityMap = new Map(
