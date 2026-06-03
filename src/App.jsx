@@ -663,6 +663,83 @@ function ApprovalMiniSheet({ sheet }) {
   );
 }
 
+function ArtSportApprovalRow({ source, item, kind }) {
+  const isMissing = !item || item.statusId === 'missing';
+  const title = kind === 'act' ? 'Акт' : 'Табель';
+  const numberLabel = kind === 'act' ? '№ акта' : '№ табеля';
+
+  return (
+    <article className="rounded-2xl border border-line bg-white/[0.04] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-black text-white">{source.sourceName}</p>
+          <p className="mt-1 truncate text-xs text-white/42">
+            {isMissing ? `${title} пока не найден` : `${numberLabel} ${item.id} · ${item.period || 'период не указан'}`}
+          </p>
+        </div>
+        <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-black ${toneClasses(item?.tone || 'sky')}`}>
+          {isMissing ? 'Не найден' : item.status}
+        </span>
+      </div>
+
+      {!isMissing ? (
+        <div className="mt-3 grid gap-2 text-xs text-white/48">
+          <div className="line-clamp-2">{item.circle || 'Кружок не указан'}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {item.time ? (
+              <span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/58">{item.time}</span>
+            ) : null}
+            {item.amount ? (
+              <span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/58">{formatMoney(item.amount)}</span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function ArtSportApprovalDetails({ approval }) {
+  const sources = approval.sources || [];
+  return (
+    <div className="mt-4 grid gap-3">
+      <section className="rounded-2xl border border-sky/15 bg-sky/[0.06] p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs uppercase tracking-[0.14em] text-sky/80">Согласование табелей</p>
+          <span className="text-[11px] text-white/38">{sources.length} табеля</span>
+        </div>
+        <div className="grid gap-2">
+          {sources.map((source) => (
+            <ArtSportApprovalRow
+              key={`${source.sourceId}-sheet`}
+              source={source}
+              item={source.sheetApproval}
+              kind="sheet"
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-amber/15 bg-amber/[0.055] p-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-xs uppercase tracking-[0.14em] text-amber/85">Акты</p>
+          <span className="text-[11px] text-white/38">ArtSport</span>
+        </div>
+        <div className="grid gap-2">
+          {sources.map((source) => (
+            <ArtSportApprovalRow
+              key={`${source.sourceId}-act`}
+              source={source}
+              item={source.actApproval}
+              kind="act"
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ActListModal({ city, status, acts, onClose }) {
   if (!status) return null;
   const filteredActs = status.id === 'all' ? acts : acts.filter((act) => act.statusId === status.id);
@@ -732,11 +809,12 @@ function ActListModal({ city, status, acts, onClose }) {
 
 function ApprovalCard({ city, onRefresh }) {
   const approval = city.approval;
-  const isStub = city.platform === 'ArtSport' || !approval;
+  const isStub = !approval;
   const progress = approval?.progress || 0;
   const actStatusCounts = approval?.actStatusCounts || [];
   const [selectedActStatus, setSelectedActStatus] = useState(null);
   const isDamubala = platformKey(approval?.platform || city.platform) === 'damubala';
+  const isArtSport = platformKey(approval?.platform || city.platform) === 'artsport';
 
   if (isStub) {
     return (
@@ -748,7 +826,7 @@ function ApprovalCard({ city, onRefresh }) {
               {city.platform || 'ArtSport'}
             </div>
             <h3 className="mt-3 text-xl font-bold">{city.name}</h3>
-            <p className="mt-1 text-sm text-white/45">Согласования ArtSport добавим позже.</p>
+            <p className="mt-1 text-sm text-white/45">Согласования добавим позже.</p>
           </div>
           <div className="grid h-11 w-11 place-items-center rounded-2xl border border-line bg-white/[0.05] text-white/45">
             <Clock3 size={20} />
@@ -790,7 +868,7 @@ function ApprovalCard({ city, onRefresh }) {
         ))}
       </div>
 
-      <ApprovalActionButton city={city} approval={approval} onRefresh={onRefresh} />
+      {isArtSport ? null : <ApprovalActionButton city={city} approval={approval} onRefresh={onRefresh} />}
 
       {isDamubala ? (
         <div className="mt-4">
@@ -810,7 +888,9 @@ function ApprovalCard({ city, onRefresh }) {
         </div>
       ) : null}
 
-      {approval.sources?.length ? (
+      {isArtSport ? <ArtSportApprovalDetails approval={approval} /> : null}
+
+      {!isArtSport && approval.sources?.length ? (
         <div className="mt-3 grid gap-2">
           {approval.sources.map((source) => (
             <div key={source.sourceId} className="rounded-2xl border border-line bg-white/[0.035] p-3">
@@ -849,7 +929,7 @@ function ApprovalCard({ city, onRefresh }) {
 
 function ApprovalCityCard({ city, loading, onClick }) {
   const approval = city.approval;
-  const isStub = city.platform === 'ArtSport' || !approval;
+  const isStub = !approval;
   const progress = approval?.progress || 0;
   const primaryStatus = approval?.statusCounts?.[0];
 
