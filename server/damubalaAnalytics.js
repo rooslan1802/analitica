@@ -262,6 +262,10 @@ function pickRows(payload) {
   return [];
 }
 
+function normalizeKey(value) {
+  return normalize(value).replace(/[^a-zа-я0-9]+/g, ' ').trim();
+}
+
 async function getActs(headers) {
   const pageSize = 10;
   const all = [];
@@ -283,6 +287,87 @@ async function getActs(headers) {
   }
 
   return all;
+}
+
+function getActCourseNames(act) {
+  if (Array.isArray(act?.hCourseDirections)) {
+    return act.hCourseDirections.map((item) => item?.nameRu).filter(Boolean);
+  }
+  return [act?.courseName, act?.directionName].filter(Boolean);
+}
+
+function getSheetCourseName(sheet) {
+  return (
+    sheet?.class?.course?.hCourseDirection?.nameRu ||
+    sheet?.class?.course?.application?.hCourseDirection?.nameRu ||
+    sheet?.course?.hCourseDirection?.nameRu ||
+    sheet?.hCourseDirection?.nameRu ||
+    ''
+  );
+}
+
+function actPeriodKey(month, year) {
+  if (!month || !year) return '';
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function actCourseKey(month, year, courseName) {
+  const period = actPeriodKey(month, year);
+  const course = normalizeKey(courseName);
+  if (!period || !course) return '';
+  return `${period}|${course}`;
+}
+
+function cityLabelForRegion(region, account) {
+  const city = account.cities.find((item) => matchesRegion(region, item.region));
+  return city ? cityActLabel(city) : '';
+}
+
+async function getActCityIndex(headers, rawActs, account) {
+  const periods = [
+    ...new Set(
+      rawActs
+        .map((act) => actPeriodKey(act?.month, act?.year))
+        .filter(Boolean)
+    )
+  ];
+  if (!periods.length) return new Map();
+
+  const entries = new Map();
+  await mapWithConcurrency(periods, 4, async (period) => {
+    const [year, month] = period.split('-').map(Number);
+    const sheets = await getTimeSheets(headers, month, year);
+    for (const sheet of sheets) {
+      const label = cityLabelForRegion(pickRegionName(sheet), account);
+      const course = getSheetCourseName(sheet);
+      const key = actCourseKey(month, year, course);
+      if (!label || !key) continue;
+      const value = entries.get(key) || { labels: new Set(), applications: new Set() };
+      value.labels.add(label);
+      const applicationId = sheet?.class?.course?.application?.id || sheet?.applicationId;
+      if (applicationId) value.applications.add(String(applicationId));
+      entries.set(key, value);
+    }
+  });
+
+  const index = new Map();
+  for (const [key, value] of entries.entries()) {
+    if (value.labels.size === 1) {
+      index.set(key, {
+        cityLabel: [...value.labels][0],
+        applicationIds: [...value.applications]
+      });
+    }
+  }
+  return index;
+}
+
+function pickIndexedActCityLabel(act, cityIndex) {
+  for (const course of getActCourseNames(act)) {
+    const match = cityIndex.get(actCourseKey(act?.month, act?.year, course));
+    if (match?.cityLabel) return match.cityLabel;
+  }
+  return '';
 }
 
 async function getSignatureHistory(attendanceId, headers) {
@@ -534,7 +619,7 @@ function pickActCityLabel(act, account) {
   if (/(^|\\s)ско($|\\s)/.test(text) || text.includes('северо-казахстан')) return 'СКО';
   if (text.includes('туркестан')) return 'Туркестан';
   if (account.cities.length === 1) return account.cities[0].region || account.cities[0].name;
-  return 'СКО / Рудный';
+  return '';
 }
 
 function pickActAmount(act) {
@@ -551,13 +636,37 @@ function pickActAmount(act) {
 }
 
 function pickActPeriod(act) {
-  if (act?.month && act?.year) return `${String(act.month).padStart(2, '0')}.${act.year}`;
+  if (act?.month && act?.year) {
+    const months = [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря'
+    ];
+    return `${months[Number(act.month) - 1] || String(act.month).padStart(2, '0')} ${act.year}`;
+  }
   if (act?.period) return String(act.period);
   return '-';
 }
 
-function formatAct(act, account) {
+function pickActCircle(act) {
+  const names = Array.isArray(act?.hCourseDirections)
+    ? act.hCourseDirections.map((item) => item?.nameRu).filter(Boolean)
+    : [];
+  return names.join(', ') || act?.courseName || act?.directionName || 'Кружок не указан';
+}
+
+function formatAct(act, account, cityIndex = new Map()) {
   const status = pickActStatus(act);
+  const cityLabel = pickIndexedActCityLabel(act, cityIndex) || pickActCityLabel(act, account);
   return {
     id: act?.id || act?.actId || act?.number,
     number: act?.id || act?.actId || act?.number || 'без номера',
@@ -565,7 +674,8 @@ function formatAct(act, account) {
     statusId: status.id,
     status: status.label,
     tone: status.tone,
-    cityLabel: pickActCityLabel(act, account),
+    cityLabel,
+    circle: pickActCircle(act),
     amount: pickActAmount(act)
   };
 }
@@ -595,10 +705,11 @@ async function getReliableActSummary(headers, account) {
   let acts = [];
   try {
     const rawActs = await getActs(headers);
+    const cityIndex = await getActCityIndex(headers, rawActs, account);
     acts = rawActs
       .map((act) => {
         try {
-          return formatAct(act, account);
+          return formatAct(act, account, cityIndex);
         } catch {
           return null;
         }
@@ -627,6 +738,38 @@ function formatActStatusCounts(counts, amountByKey = {}) {
     count: Number(counts?.[status.key] || 0),
     amount: Number(amountByKey?.[status.key] || 0)
   }));
+}
+
+function cityActLabel(city) {
+  if (city.id === 'petropavlovsk') return 'СКО';
+  if (city.id === 'rudny') return 'Рудный';
+  return city.region || city.name;
+}
+
+function actsForCity(acts, city) {
+  const label = cityActLabel(city);
+  return acts
+    .filter((act) => act.cityLabel === label)
+    .map((act) => ({
+      ...act,
+      cityLabel: label
+    }));
+}
+
+function summarizeActsForCity(actSummary, city) {
+  const cityActs = actsForCity(actSummary.acts || [], city);
+  if (!cityActs.length) {
+    return {
+      acts: [],
+      actStatusCounts: formatActStatusCounts(getEmptyActCounts(), getEmptyActCounts())
+    };
+  }
+
+  const cityActSummary = addActAmounts(countFormattedActsByStatus(cityActs), cityActs);
+  return {
+    acts: cityActSummary.acts,
+    actStatusCounts: formatActStatusCounts(cityActSummary.counts, cityActSummary.amountByKey)
+  };
 }
 
 function getSheetStatus(sheet) {
@@ -750,12 +893,13 @@ async function countAccount(account) {
   const headers = jsonHeaders(auth.token);
   const sheets = await getActiveTimeSheets(headers);
   const actSummary = await getReliableActSummary(headers, account);
-  const actStatusCounts = formatActStatusCounts(actSummary.counts, actSummary.amountByKey);
 
   const cityMap = new Map(
     account.cities.map((city) => [
       city.id,
-      {
+      (() => {
+        const cityActSummary = summarizeActsForCity(actSummary, city);
+        return {
         ...city,
         platform: 'Damubala',
         status: 'active',
@@ -766,11 +910,12 @@ async function countAccount(account) {
         signedChildren: [],
         approval: {
           ...createApprovalBucket('Damubala'),
-          actStatusCounts,
-          acts: actSummary.acts
+          actStatusCounts: cityActSummary.actStatusCounts,
+          acts: cityActSummary.acts
         },
         passwordUpdated: auth.passwordUpdated
-      }
+        };
+      })()
     ])
   );
 

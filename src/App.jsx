@@ -696,6 +696,7 @@ function ActListModal({ city, status, acts, onClose }) {
                 <div className="min-w-0">
                   <p className="text-base font-black">№ {act.number}</p>
                   <p className="mt-1 text-sm text-white/55">{act.period}</p>
+                  <p className="mt-1 line-clamp-2 text-xs leading-4 text-white/42">{act.circle || 'Кружок не указан'}</p>
                 </div>
                 <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses(act.tone)}`}>
                   {act.cityLabel}
