@@ -618,7 +618,7 @@ function ApprovalCard({ city, onRefresh }) {
   const isStub = city.platform === 'ArtSport' || !approval;
   const progress = approval?.progress || 0;
   const actStatusCounts = approval?.actStatusCounts || [];
-  const showPlainSheets = platformKey(approval?.platform || city.platform) !== 'damubala' || !actStatusCounts.length;
+  const isDamubala = platformKey(approval?.platform || city.platform) === 'damubala';
 
   if (isStub) {
     return (
@@ -674,7 +674,7 @@ function ApprovalCard({ city, onRefresh }) {
 
       <ApprovalActionButton city={city} approval={approval} onRefresh={onRefresh} />
 
-      {actStatusCounts.length ? (
+      {isDamubala ? (
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs uppercase tracking-[0.14em] text-white/35">Акты организации</p>
@@ -703,7 +703,7 @@ function ApprovalCard({ city, onRefresh }) {
             </div>
           ))}
         </div>
-      ) : showPlainSheets ? (
+      ) : !isDamubala ? (
         <div className="mt-3 grid gap-2">
           {(approval.sheets || []).slice(0, 4).map((sheet) => (
             <ApprovalMiniSheet key={sheet.id} sheet={sheet} />

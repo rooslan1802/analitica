@@ -326,12 +326,11 @@ const DAMUBALA_ACT_STATUS_META = [
 ];
 
 function formatActStatusCounts(counts) {
-  if (!counts || typeof counts !== 'object') return [];
   return DAMUBALA_ACT_STATUS_META.map((status) => ({
     id: status.id,
     label: status.label,
     tone: status.tone,
-    count: Number(counts[status.key] || 0)
+    count: Number(counts?.[status.key] || 0)
   }));
 }
 
