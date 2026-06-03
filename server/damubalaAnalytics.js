@@ -202,6 +202,30 @@ async function getActCounts(headers) {
   }
 }
 
+async function getActs(headers) {
+  const pageSize = 100;
+  const all = [];
+
+  for (let page = 1; page <= 20; page += 1) {
+    const params = new URLSearchParams({
+      PageNumber: String(page),
+      PageSize: String(pageSize)
+    });
+    const response = await apiRequest(`/v1/Act/Get?${params.toString()}`, {
+      method: 'GET',
+      headers
+    }, 30000);
+    if (!response.ok) break;
+    const data = await readJson(response);
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    if (!rows.length) break;
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+
+  return all;
+}
+
 async function getSignatureHistory(attendanceId, headers) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await apiRequest(`/v1/timeSheet/GetSignatureHistoryV2/${attendanceId}`, {
@@ -324,6 +348,45 @@ const DAMUBALA_ACT_STATUS_META = [
   { key: 'done', id: 'done', label: 'Завершенные', tone: 'mint' },
   { key: 'rejected', id: 'rejected', label: 'Отказанные', tone: 'coral' }
 ];
+
+function getEmptyActCounts() {
+  return DAMUBALA_ACT_STATUS_META.reduce((acc, status) => {
+    acc[status.key] = 0;
+    return acc;
+  }, {});
+}
+
+function hasAnyActCount(counts) {
+  return DAMUBALA_ACT_STATUS_META.some((status) => Number(counts?.[status.key] || 0) > 0);
+}
+
+function countActsByStatus(acts) {
+  const counts = getEmptyActCounts();
+  counts.allActsCount = acts.length;
+
+  for (const act of acts) {
+    const statusId = Number(act?.hActStatus?.id || act?.hActStatusId || 0);
+    if (statusId === 2) counts.waitingForDocument += 1;
+    else if (statusId === 4) counts.checkESF += 1;
+    else if (statusId === 1) counts.notSigned += 1;
+    else if (statusId === 5) counts.done += 1;
+    else if (statusId === 3) counts.rejected += 1;
+  }
+
+  return counts;
+}
+
+async function getReliableActCounts(headers) {
+  const counts = await getActCounts(headers);
+  if (hasAnyActCount(counts)) return counts;
+
+  try {
+    const acts = await getActs(headers);
+    return countActsByStatus(acts);
+  } catch {
+    return counts || getEmptyActCounts();
+  }
+}
 
 function formatActStatusCounts(counts) {
   return DAMUBALA_ACT_STATUS_META.map((status) => ({
@@ -450,7 +513,7 @@ async function countAccount(account) {
   const auth = await signInWithFallback(account);
   const headers = jsonHeaders(auth.token);
   const sheets = await getActiveTimeSheets(headers);
-  const actCounts = await getActCounts(headers);
+  const actCounts = await getReliableActCounts(headers);
   const actStatusCounts = formatActStatusCounts(actCounts);
 
   const cityMap = new Map(

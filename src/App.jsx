@@ -527,6 +527,37 @@ function ApprovalStatusPill({ status }) {
   );
 }
 
+function ApprovalActStatusPill({ cityId, status }) {
+  const [increase, setIncrease] = useState(0);
+
+  useEffect(() => {
+    const storageKey = `damubala-act-status:${cityId}:${status.id}`;
+    const current = Number(status.count || 0);
+    const previousRaw = window.localStorage.getItem(storageKey);
+
+    if (previousRaw !== null) {
+      const previous = Number(previousRaw || 0);
+      setIncrease(current > previous ? current - previous : 0);
+    }
+
+    window.localStorage.setItem(storageKey, String(current));
+  }, [cityId, status.count, status.id]);
+
+  return (
+    <div className={`rounded-2xl border px-3 py-2 ${toneClasses(status.tone)}`}>
+      <div className="text-[11px] leading-4 opacity-85">{status.label}</div>
+      <div className="mt-1 flex items-end gap-2">
+        <span className="text-xl font-black">{status.count}</span>
+        {increase > 0 ? (
+          <span className="mb-0.5 rounded-full border border-mint/25 bg-mint/12 px-2 py-0.5 text-[11px] font-black text-mint">
+            +{increase}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ApprovalActionButton({ city, approval, onRefresh }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
@@ -681,7 +712,7 @@ function ApprovalCard({ city, onRefresh }) {
           </div>
           <div className="grid grid-cols-2 gap-2">
             {actStatusCounts.map((status) => (
-              <ApprovalStatusPill key={status.id} status={status} />
+              <ApprovalActStatusPill key={status.id} cityId={city.id} status={status} />
             ))}
           </div>
         </div>
