@@ -1,6 +1,93 @@
 import https from 'node:https';
 
 const BASE_URL = 'https://damubala.kz';
+const UNKNOWN_ACT_CITY_LABEL = 'Не найден город';
+const ACT_CITY_INDEX_TTL_MS = 10 * 60 * 1000;
+const actCityIndexCache = new Map();
+const DAMUBALA_NORTH_ACT_CITY_BY_ID = {
+  80155: 'Рудный',
+  84621: 'Рудный',
+  93883: 'Рудный',
+  103268: 'Рудный',
+  104633: 'СКО',
+  104636: 'СКО',
+  104637: 'СКО',
+  104639: 'СКО',
+  104640: 'СКО',
+  107592: 'СКО',
+  107595: 'СКО',
+  107598: 'СКО',
+  107600: 'СКО',
+  107602: 'СКО',
+  110330: 'Рудный',
+  110331: 'Рудный',
+  115809: 'СКО',
+  115812: 'СКО',
+  115813: 'СКО',
+  115814: 'СКО',
+  115815: 'СКО',
+  116666: 'Рудный',
+  116668: 'Рудный',
+  122032: 'СКО',
+  122033: 'СКО',
+  122035: 'СКО',
+  122036: 'СКО',
+  122542: 'Рудный',
+  122546: 'Рудный',
+  122906: 'СКО',
+  128036: 'Рудный',
+  128037: 'Рудный',
+  129120: 'СКО',
+  132728: 'СКО',
+  134325: 'Рудный',
+  134327: 'Рудный',
+  139474: 'Рудный',
+  139476: 'Рудный',
+  139955: 'СКО',
+  145159: 'Рудный',
+  145160: 'Рудный',
+  145451: 'СКО',
+  152381: 'Рудный',
+  152393: 'Рудный',
+  153449: 'СКО',
+  160969: 'Рудный',
+  160975: 'Рудный',
+  163122: 'СКО',
+  169148: 'Рудный',
+  169149: 'Рудный',
+  170040: 'СКО',
+  175018: 'Рудный',
+  175020: 'Рудный',
+  175125: 'СКО',
+  179785: 'Рудный',
+  179786: 'Рудный',
+  179941: 'СКО',
+  183910: 'Рудный',
+  183921: 'Рудный',
+  183931: 'СКО',
+  188511: 'Рудный',
+  188575: 'Рудный',
+  188596: 'СКО',
+  189464: 'СКО',
+  191960: 'Рудный',
+  191961: 'Рудный',
+  192370: 'СКО',
+  196608: 'СКО',
+  196609: 'Рудный',
+  196923: 'Рудный',
+  200396: 'СКО',
+  201942: 'Рудный',
+  202067: 'Рудный',
+  204844: 'СКО',
+  204972: 'Рудный',
+  204973: 'Рудный',
+  208316: 'Рудный',
+  208318: 'Рудный',
+  208490: 'СКО',
+  212237: 'СКО',
+  212734: 'Рудный',
+  212735: 'Рудный'
+};
 
 function requiredEnv(name) {
   const value = process.env[name];
@@ -262,15 +349,11 @@ function pickRows(payload) {
   return [];
 }
 
-function normalizeKey(value) {
-  return normalize(value).replace(/[^a-zа-я0-9]+/g, ' ').trim();
-}
-
 async function getActs(headers) {
-  const pageSize = 10;
+  const pageSize = 100;
   const all = [];
 
-  for (let page = 1; page <= 50; page += 1) {
+  for (let page = 1; page <= 10; page += 1) {
     const params = new URLSearchParams({
       PageNumber: String(page),
       PageSize: String(pageSize)
@@ -289,85 +372,53 @@ async function getActs(headers) {
   return all;
 }
 
-function getActCourseNames(act) {
-  if (Array.isArray(act?.hCourseDirections)) {
-    return act.hCourseDirections.map((item) => item?.nameRu).filter(Boolean);
-  }
-  return [act?.courseName, act?.directionName].filter(Boolean);
-}
-
-function getSheetCourseName(sheet) {
-  return (
-    sheet?.class?.course?.hCourseDirection?.nameRu ||
-    sheet?.class?.course?.application?.hCourseDirection?.nameRu ||
-    sheet?.course?.hCourseDirection?.nameRu ||
-    sheet?.hCourseDirection?.nameRu ||
-    ''
-  );
-}
-
-function actPeriodKey(month, year) {
-  if (!month || !year) return '';
-  return `${year}-${String(month).padStart(2, '0')}`;
-}
-
-function actCourseKey(month, year, courseName) {
-  const period = actPeriodKey(month, year);
-  const course = normalizeKey(courseName);
-  if (!period || !course) return '';
-  return `${period}|${course}`;
-}
-
 function cityLabelForRegion(region, account) {
   const city = account.cities.find((item) => matchesRegion(region, item.region));
   return city ? cityActLabel(city) : '';
 }
 
-async function getActCityIndex(headers, rawActs, account) {
-  const periods = [
-    ...new Set(
-      rawActs
-        .map((act) => actPeriodKey(act?.month, act?.year))
-        .filter(Boolean)
-    )
-  ];
-  if (!periods.length) return new Map();
+function getActCityIndexCacheKey(account, rawActs) {
+  const ids = rawActs.map((act) => act?.id).filter(Boolean).join(',');
+  return `${account.id}:${ids}`;
+}
 
-  const entries = new Map();
-  await mapWithConcurrency(periods, 4, async (period) => {
-    const [year, month] = period.split('-').map(Number);
-    const sheets = await getTimeSheets(headers, month, year);
-    for (const sheet of sheets) {
-      const label = cityLabelForRegion(pickRegionName(sheet), account);
-      const course = getSheetCourseName(sheet);
-      const key = actCourseKey(month, year, course);
-      if (!label || !key) continue;
-      const value = entries.get(key) || { labels: new Set(), applications: new Set() };
-      value.labels.add(label);
-      const applicationId = sheet?.class?.course?.application?.id || sheet?.applicationId;
-      if (applicationId) value.applications.add(String(applicationId));
-      entries.set(key, value);
-    }
-  });
+async function getActCityIndex(headers, rawActs, account, activeSheets = []) {
+  const cacheKey = getActCityIndexCacheKey(account, rawActs);
+  const cached = actCityIndexCache.get(cacheKey);
+  if (cached && Date.now() - cached.createdAt < ACT_CITY_INDEX_TTL_MS) {
+    return cached.index;
+  }
 
   const index = new Map();
-  for (const [key, value] of entries.entries()) {
-    if (value.labels.size === 1) {
-      index.set(key, {
-        cityLabel: [...value.labels][0],
-        applicationIds: [...value.applications]
-      });
+  if (account.id === 'north') {
+    for (const [actId, cityLabel] of Object.entries(DAMUBALA_NORTH_ACT_CITY_BY_ID)) {
+      index.set(String(actId), { cityLabel, applicationIds: [] });
     }
   }
+
+  for (const sheet of activeSheets) {
+    const actId = sheet?.actId;
+    if (!actId) continue;
+    const label = cityLabelForRegion(pickRegionName(sheet), account);
+    if (!label) continue;
+    const key = String(actId);
+    const value = index.get(key) || { cityLabel: label, applicationIds: [] };
+    if (value.cityLabel === label) {
+      const applicationId = sheet?.class?.course?.application?.id || sheet?.applicationId;
+      if (applicationId && !value.applicationIds.includes(String(applicationId))) {
+        value.applicationIds.push(String(applicationId));
+      }
+      index.set(key, value);
+    }
+  }
+
+  actCityIndexCache.set(cacheKey, { createdAt: Date.now(), index });
   return index;
 }
 
 function pickIndexedActCityLabel(act, cityIndex) {
-  for (const course of getActCourseNames(act)) {
-    const match = cityIndex.get(actCourseKey(act?.month, act?.year, course));
-    if (match?.cityLabel) return match.cityLabel;
-  }
-  return '';
+  const match = cityIndex.get(String(act?.id || ''));
+  return match?.cityLabel || '';
 }
 
 async function getSignatureHistory(attendanceId, headers) {
@@ -666,7 +717,7 @@ function pickActCircle(act) {
 
 function formatAct(act, account, cityIndex = new Map()) {
   const status = pickActStatus(act);
-  const cityLabel = pickIndexedActCityLabel(act, cityIndex) || pickActCityLabel(act, account);
+  const cityLabel = pickIndexedActCityLabel(act, cityIndex) || pickActCityLabel(act, account) || UNKNOWN_ACT_CITY_LABEL;
   return {
     id: act?.id || act?.actId || act?.number,
     number: act?.id || act?.actId || act?.number || 'без номера',
@@ -700,12 +751,12 @@ function countFormattedActsByStatus(acts) {
   return counts;
 }
 
-async function getReliableActSummary(headers, account) {
+async function getReliableActSummary(headers, account, activeSheets = []) {
   const counts = normalizeActCounts(await getActCounts(headers));
   let acts = [];
   try {
     const rawActs = await getActs(headers);
-    const cityIndex = await getActCityIndex(headers, rawActs, account);
+    const cityIndex = await getActCityIndex(headers, rawActs, account, activeSheets);
     acts = rawActs
       .map((act) => {
         try {
@@ -749,10 +800,10 @@ function cityActLabel(city) {
 function actsForCity(acts, city) {
   const label = cityActLabel(city);
   return acts
-    .filter((act) => act.cityLabel === label)
+    .filter((act) => act.cityLabel === label || act.cityLabel === UNKNOWN_ACT_CITY_LABEL)
     .map((act) => ({
       ...act,
-      cityLabel: label
+      cityLabel: act.cityLabel === UNKNOWN_ACT_CITY_LABEL ? UNKNOWN_ACT_CITY_LABEL : label
     }));
 }
 
@@ -892,7 +943,7 @@ async function countAccount(account) {
   const auth = await signInWithFallback(account);
   const headers = jsonHeaders(auth.token);
   const sheets = await getActiveTimeSheets(headers);
-  const actSummary = await getReliableActSummary(headers, account);
+  const actSummary = await getReliableActSummary(headers, account, sheets);
 
   const cityMap = new Map(
     account.cities.map((city) => [
