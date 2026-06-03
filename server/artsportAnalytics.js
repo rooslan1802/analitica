@@ -112,7 +112,50 @@ function findSelectOptions(html, selectId) {
 }
 
 function getLatestPeriod(html) {
-  return findSelectOptions(html, 'period_tab').find((option) => option.value && option.value !== '0')?.value || '';
+  return findSelectOptions(html, 'period_tab').find((option) => option.value && option.value !== '0') || null;
+}
+
+const monthMap = {
+  январь: 'январь',
+  января: 'январь',
+  февраль: 'февраль',
+  февраля: 'февраль',
+  март: 'март',
+  марта: 'март',
+  апрель: 'апрель',
+  апреля: 'апрель',
+  май: 'май',
+  мая: 'май',
+  июнь: 'июнь',
+  июня: 'июнь',
+  июль: 'июль',
+  июля: 'июль',
+  август: 'август',
+  августа: 'август',
+  сентябрь: 'сентябрь',
+  сентября: 'сентябрь',
+  октябрь: 'октябрь',
+  октября: 'октябрь',
+  ноябрь: 'ноябрь',
+  ноября: 'ноябрь',
+  декабрь: 'декабрь',
+  декабря: 'декабрь'
+};
+
+function normalizePeriod(value = '') {
+  const text = cleanText(value).toLowerCase();
+  const year = text.match(/20\d{2}/)?.[0] || '';
+  const month = Object.keys(monthMap).find((name) => text.includes(name));
+  return [month ? monthMap[month] : '', year].filter(Boolean).join(' ');
+}
+
+function formatPeriodLabel(value = '') {
+  const text = cleanText(value);
+  const year = text.match(/20\d{2}/)?.[0] || '';
+  const monthKey = Object.keys(monthMap).find((name) => text.toLowerCase().includes(name));
+  if (!year || !monthKey) return text;
+  const month = monthMap[monthKey];
+  return `${month.charAt(0).toUpperCase()}${month.slice(1)}, ${year}`;
 }
 
 function cleanOrderText(text) {
@@ -153,17 +196,18 @@ function splitStatus(value) {
   };
 }
 
-function makeMissingApproval(source, type) {
+function makeMissingApproval(source, type, period = '') {
+  const isAct = type === 'act';
   return {
     id: `${source.id}-${type}-missing`,
     sourceId: source.id,
     sourceName: source.name,
     type,
     statusId: 'missing',
-    status: 'Не найден',
+    status: isAct ? 'Табеля не рассмотрены' : 'Табель не готов к согласованию',
     tone: 'sky',
     time: '',
-    period: '-',
+    period,
     circle: 'Заявка ' + source.orderId
   };
 }
@@ -204,7 +248,7 @@ async function fetchSourceMeta(jar, source) {
   const token = getCsrfToken(html);
   const company = findSelectOptions(html, 'company_id_tab').find((option) => option.value !== '0');
   const period = getLatestPeriod(html);
-  if (!token || !company?.value || !period) {
+  if (!token || !company?.value || !period?.value) {
     throw new Error(`ArtSport sheet filters not found: ${source.name}`);
   }
 
@@ -231,7 +275,9 @@ async function fetchSourceMeta(jar, source) {
     companyId: company.value,
     orderId: order.value,
     circle: cleanOrderText(order.label),
-    period
+    period: period.value,
+    periodLabel: formatPeriodLabel(period.label),
+    periodKey: normalizePeriod(period.label)
   };
 }
 
@@ -291,11 +337,11 @@ async function fetchTicketPhones(jar) {
   return phones;
 }
 
-async function fetchApprovalRows(jar, source) {
+async function fetchApprovalRows(jar, source, meta) {
   const response = await request(jar, APPROVALS_URL);
   const html = await response.text();
   return parseTableRows(html)
-    .filter((row) => row.length >= 7 && row[1] === source.orderId)
+    .filter((row) => row.length >= 7 && row[1] === source.orderId && normalizePeriod(row[2]) === meta.periodKey)
     .map((row) => {
       const status = splitStatus(row[6]);
       return {
@@ -346,8 +392,8 @@ async function fetchActRows(jar, source, approvalRows) {
 
 function createApproval(sourceResults) {
   const sources = sourceResults.map((source) => {
-    const sheetApproval = source.sheetApprovals[0] || makeMissingApproval(source, 'sheet');
-    const actApproval = source.actApprovals[0] || makeMissingApproval(source, 'act');
+    const sheetApproval = source.sheetApprovals[0] || makeMissingApproval(source, 'sheet', source.periodLabel);
+    const actApproval = source.actApprovals[0] || makeMissingApproval(source, 'act', source.periodLabel);
     const items = [sheetApproval, actApproval];
     const completed = items.filter((item) => item.statusId === 'approved').length;
     return {
@@ -400,7 +446,7 @@ async function countSource(source) {
   const meta = await fetchSourceMeta(jar, source);
   const rows = await fetchSheetRows(jar, source, meta);
   const phonesByVoucher = await fetchTicketPhones(jar);
-  const sheetApprovals = await fetchApprovalRows(jar, source);
+  const sheetApprovals = await fetchApprovalRows(jar, source, meta);
   const actApprovals = await fetchActRows(jar, source, sheetApprovals);
   for (const row of rows) {
     row.phone = phonesByVoucher.get(row.voucher) || '';
@@ -415,6 +461,8 @@ async function countSource(source) {
     signedChildren,
     unsignedChildren,
     orderId: source.orderId,
+    periodLabel: meta.periodLabel,
+    periodKey: meta.periodKey,
     sheetApprovals,
     actApprovals
   };

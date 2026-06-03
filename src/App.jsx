@@ -669,32 +669,42 @@ function ArtSportApprovalRow({ source, item, kind }) {
   const numberLabel = kind === 'act' ? '№ акта' : '№ табеля';
 
   return (
-    <article className="rounded-2xl border border-line bg-white/[0.04] p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-black text-white">{source.sourceName}</p>
-          <p className="mt-1 truncate text-xs text-white/42">
-            {isMissing ? `${title} пока не найден` : `${numberLabel} ${item.id} · ${item.period || 'период не указан'}`}
+    <article className={`rounded-2xl border p-3 ${
+      isMissing ? 'border-sky/18 bg-sky/[0.045]' : 'border-line bg-white/[0.04]'
+    }`}>
+      <div className="grid grid-cols-[1fr_auto] items-start gap-3">
+        <div className="min-w-0 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${item?.tone === 'mint' ? 'bg-mint' : item?.tone === 'amber' ? 'bg-amber' : item?.tone === 'coral' ? 'bg-coral' : 'bg-sky'}`} />
+            <p className="truncate text-sm font-black text-white">{source.sourceName}</p>
+          </div>
+          <p className="truncate pl-4 text-xs text-white/42">
+            {isMissing ? title : `${numberLabel} ${item.id}`}
           </p>
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-black ${toneClasses(item?.tone || 'sky')}`}>
-          {isMissing ? 'Не найден' : item.status}
+        <span className={`max-w-[142px] shrink-0 rounded-full border px-2 py-1 text-center text-[10px] font-black leading-4 ${toneClasses(item?.tone || 'sky')}`}>
+          {item?.status || 'Не найден'}
         </span>
       </div>
 
-      {!isMissing ? (
-        <div className="mt-3 grid gap-2 text-xs text-white/48">
-          <div className="line-clamp-2">{item.circle || 'Кружок не указан'}</div>
-          <div className="flex flex-wrap items-center gap-2">
-            {item.time ? (
-              <span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/58">{item.time}</span>
-            ) : null}
-            {item.amount ? (
-              <span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/58">{formatMoney(item.amount)}</span>
-            ) : null}
-          </div>
+      <div className="mt-3 grid gap-2 pl-4 text-xs text-white/48">
+        <div className="line-clamp-2">{item?.circle || 'Кружок не указан'}</div>
+        <div className="flex flex-wrap items-center gap-2">
+          {item?.period ? (
+            <span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/58">{item.period}</span>
+          ) : null}
+          {!isMissing ? (
+            <>
+              {item.time ? (
+                <span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/58">{item.time}</span>
+              ) : null}
+              {item.amount ? (
+                <span className="rounded-full bg-white/[0.06] px-2 py-1 text-white/58">{formatMoney(item.amount)}</span>
+              ) : null}
+            </>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </article>
   );
 }
@@ -703,8 +713,8 @@ function ArtSportApprovalDetails({ approval }) {
   const sources = approval.sources || [];
   return (
     <div className="mt-4 grid gap-3">
-      <section className="rounded-2xl border border-sky/15 bg-sky/[0.06] p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
+      <section className="rounded-2xl border border-sky/15 bg-sky/[0.045] p-3">
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <p className="text-xs uppercase tracking-[0.14em] text-sky/80">Согласование табелей</p>
           <span className="text-[11px] text-white/38">{sources.length} табеля</span>
         </div>
@@ -720,10 +730,10 @@ function ArtSportApprovalDetails({ approval }) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-amber/15 bg-amber/[0.055] p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
+      <section className="rounded-2xl border border-amber/15 bg-amber/[0.04] p-3">
+        <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <p className="text-xs uppercase tracking-[0.14em] text-amber/85">Акты</p>
-          <span className="text-[11px] text-white/38">ArtSport</span>
+          <span className="text-[11px] text-white/38">текущий период</span>
         </div>
         <div className="grid gap-2">
           {sources.map((source) => (
