@@ -177,25 +177,26 @@ function getActivePeriods() {
 
 async function getActiveTimeSheets(headers) {
   const seen = new Set();
-  const all = [];
   for (const period of getActivePeriods()) {
     const sheets = await getTimeSheets(headers, period.month, period.year);
+    const activeSheets = sheets.filter(shouldCountVoucherSheet);
+    if (!activeSheets.length) continue;
+
+    const all = [];
     for (const sheet of sheets) {
       const key = sheet?.id || `${period.year}-${period.month}-${all.length}`;
       if (seen.has(key)) continue;
       seen.add(key);
       all.push(sheet);
     }
+    return all;
   }
-  return all;
+  return [];
 }
 
 async function getActCounts(headers) {
   try {
-    const params = new URLSearchParams({
-      hCourseDirectionId: '0'
-    });
-    const response = await apiRequest(`/v1/Act/GetCount?${params.toString()}`, {
+    const response = await apiRequest('/v1/Act/GetCount', {
       method: 'GET',
       headers
     }, 30000);
@@ -225,8 +226,7 @@ async function getActs(headers) {
   for (let page = 1; page <= 20; page += 1) {
     const params = new URLSearchParams({
       PageNumber: String(page),
-      PageSize: String(pageSize),
-      hCourseDirectionId: '0'
+      PageSize: String(pageSize)
     });
     const response = await apiRequest(`/v1/Act/Get?${params.toString()}`, {
       method: 'GET',
@@ -476,7 +476,7 @@ function getSheetStatus(sheet) {
 }
 
 function shouldCountVoucherSheet(sheet) {
-  return getSheetStatus(sheet).id === 'parents';
+  return ['parents', 'operator', 'approved'].includes(getSheetStatus(sheet).id);
 }
 
 function createApprovalBucket(platform) {
