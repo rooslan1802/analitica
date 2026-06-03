@@ -1,8 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
+  CheckCircle2,
   Clock3,
+  ClipboardCheck,
   Database,
+  FileCheck2,
   MessageCircle,
   Minus,
   Phone,
@@ -44,6 +47,17 @@ function LoadingNumber({ children, loading, className = '' }) {
       {children}
     </span>
   );
+}
+
+const toneClass = {
+  mint: 'border-mint/25 bg-mint/12 text-mint shadow-[0_0_26px_rgba(73,242,186,.13)]',
+  coral: 'border-coral/25 bg-coral/12 text-coral shadow-[0_0_26px_rgba(255,112,102,.13)]',
+  amber: 'border-amber/25 bg-amber/12 text-amber shadow-[0_0_26px_rgba(245,183,76,.13)]',
+  sky: 'border-sky/25 bg-sky/12 text-sky shadow-[0_0_26px_rgba(88,200,255,.13)]'
+};
+
+function toneClasses(tone) {
+  return toneClass[tone] || toneClass.sky;
 }
 
 function CityButton({ city, selected, onClick, loading }) {
@@ -481,6 +495,169 @@ function ChildrenModal({ payload, onClose }) {
   );
 }
 
+function ApprovalStatusPill({ status }) {
+  return (
+    <div className={`rounded-2xl border px-3 py-2 ${toneClasses(status.tone)}`}>
+      <div className="text-[11px] leading-4 opacity-85">{status.label}</div>
+      <div className="mt-1 text-xl font-black">{status.count}</div>
+    </div>
+  );
+}
+
+function ApprovalMiniSheet({ sheet }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/[0.035] px-3 py-2">
+      <div className="min-w-0">
+        <p className="truncate text-xs font-semibold text-white/72">{sheet.period || `Табель ${sheet.id}`}</p>
+        <p className="mt-0.5 truncate text-[11px] text-white/38">{sheet.id ? `№ ${sheet.id}` : 'табель'}</p>
+      </div>
+      <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${toneClasses(sheet.tone)}`}>
+        {sheet.status}
+      </span>
+    </div>
+  );
+}
+
+function ApprovalCard({ city }) {
+  const approval = city.approval;
+  const isStub = city.platform === 'ArtSport' || !approval;
+  const progress = approval?.progress || 0;
+
+  if (isStub) {
+    return (
+      <section className="rounded-[26px] border border-line bg-panel/70 p-4 shadow-panel">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-sky/20 bg-sky/10 px-3 py-1 text-xs text-sky">
+              <Database size={13} />
+              {city.platform || 'ArtSport'}
+            </div>
+            <h3 className="mt-3 text-xl font-bold">{city.name}</h3>
+            <p className="mt-1 text-sm text-white/45">Согласования ArtSport добавим позже.</p>
+          </div>
+          <div className="grid h-11 w-11 place-items-center rounded-2xl border border-line bg-white/[0.05] text-white/45">
+            <Clock3 size={20} />
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-[26px] border border-line bg-panel/70 p-4 shadow-panel">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-mint/20 bg-mint/10 px-3 py-1 text-xs text-mint">
+            <Database size={13} />
+            {approval.platform || city.platform}
+          </div>
+          <h3 className="mt-3 text-xl font-bold">{city.name}</h3>
+          <p className="mt-1 text-sm leading-5 text-white/48">{approval.headline}</p>
+        </div>
+        <div className="text-right">
+          <div className="text-3xl font-black text-mint">{progress}%</div>
+          <div className="text-[11px] text-white/38">готово</div>
+        </div>
+      </div>
+
+      <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          className="h-full rounded-full bg-gradient-to-r from-mint to-sky"
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.9, ease: 'easeOut' }}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {(approval.statusCounts || []).map((status) => (
+          <ApprovalStatusPill key={status.id} status={status} />
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-line bg-white/[0.035] p-3">
+        <p className="text-xs uppercase tracking-[0.14em] text-white/35">Следующий шаг</p>
+        <p className="mt-1 text-sm font-semibold text-white/82">{approval.nextAction}</p>
+      </div>
+
+      {approval.sources?.length ? (
+        <div className="mt-3 grid gap-2">
+          {approval.sources.map((source) => (
+            <div key={source.sourceId} className="rounded-2xl border border-line bg-white/[0.035] p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="text-sm font-bold">{source.sourceName}</span>
+                <span className="text-xs text-white/38">{source.progress}% готово</span>
+              </div>
+              <div className="grid gap-2">
+                {(source.sheets || []).map((sheet) => (
+                  <ApprovalMiniSheet key={`${source.sourceId}-${sheet.id}`} sheet={sheet} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-2">
+          {(approval.sheets || []).slice(0, 4).map((sheet) => (
+            <ApprovalMiniSheet key={sheet.id} sheet={sheet} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ApprovalsPage({ cities, loading, updatedAt }) {
+  const approvalCities = cities.filter((city) => city.status === 'active');
+  const liveApprovals = approvalCities.filter((city) => city.approval);
+  const total = liveApprovals.reduce((sum, city) => sum + Number(city.approval?.total || 0), 0);
+  const completed = liveApprovals.reduce((sum, city) => sum + Number(city.approval?.completed || 0), 0);
+  const readyForActs = liveApprovals.reduce((sum, city) => sum + Number(city.approval?.readyForActs || 0), 0);
+  const percent = Math.round((completed / Math.max(total, 1)) * 100);
+
+  return (
+    <div className="mt-5">
+      <section className="overflow-hidden rounded-[30px] border border-line bg-gradient-to-br from-panel2/92 to-night/92 p-5 shadow-panel">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-white/48">Статус рассмотрения табелей</p>
+            <div className="mt-2 flex items-end gap-2">
+              <strong className="text-5xl font-black tracking-tight">
+                <LoadingNumber loading={loading}>{percent}</LoadingNumber>%
+              </strong>
+              <span className="pb-2 text-sm text-sky">готово</span>
+            </div>
+          </div>
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-mint/12 text-mint">
+            <ClipboardCheck size={26} />
+          </div>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-mint/25 bg-mint/12 p-3">
+            <p className="text-xs text-mint/90">Рассмотрено</p>
+            <strong className="mt-1 block text-3xl font-black text-mint">
+              <LoadingNumber loading={loading}>{completed}</LoadingNumber>
+            </strong>
+          </div>
+          <div className="rounded-2xl border border-amber/25 bg-amber/12 p-3">
+            <p className="text-xs text-amber/90">К актам/платежам</p>
+            <strong className="mt-1 block text-3xl font-black text-amber">
+              <LoadingNumber loading={loading}>{readyForActs}</LoadingNumber>
+            </strong>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-white/38">Обновлено {updatedAt}</div>
+      </section>
+
+      <div className="mt-4 grid gap-3">
+        {approvalCities.map((city) => (
+          <ApprovalCard key={city.id} city={city} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StubPanel({ city }) {
   return (
     <motion.section
@@ -511,10 +688,12 @@ function StubPanel({ city }) {
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState('sheets');
   const [selectedId, setSelectedId] = useState('petropavlovsk');
   const [cities, setCities] = useState(platformCities);
   const [isLoading, setIsLoading] = useState(false);
   const [dataLabel, setDataLabel] = useState('демо-данные');
+  const [updatedAt, setUpdatedAt] = useState('только что');
   const [waitLeft, setWaitLeft] = useState(0);
   const [childrenList, setChildrenList] = useState(null);
 
@@ -535,6 +714,7 @@ function App() {
       const payload = await response.json();
       if (payload?.cities?.length) {
         setCities(mergeCities(platformCities, payload.cities.map((city) => ({ ...city, updatedAt: payload.updatedAt }))));
+        setUpdatedAt(payload.updatedAt || 'только что');
         setDataLabel(payload.errors?.length ? 'часть данных' : 'live данные');
       }
     } catch {
@@ -572,14 +752,16 @@ function App() {
       <div className="scanline pointer-events-none fixed inset-0 opacity-40" />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(73,242,186,.16),transparent_28rem),radial-gradient(circle_at_100%_26%,rgba(255,112,102,.13),transparent_24rem),radial-gradient(circle_at_48%_100%,rgba(88,200,255,.12),transparent_24rem)]" />
 
-      <main className="relative mx-auto flex min-h-screen w-full max-w-md flex-col px-4 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
+      <main className="relative mx-auto flex min-h-screen w-full max-w-md flex-col px-4 pb-28 pt-[max(1rem,env(safe-area-inset-top))]">
         <header className="flex items-center justify-between gap-3">
           <div>
             <p className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-white/38">
               <Sparkles size={14} className="text-mint" />
               Damubala
             </p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight">Табели</h1>
+            <h1 className="mt-2 text-3xl font-black tracking-tight">
+              {activeTab === 'sheets' ? 'Табели' : 'Согласования'}
+            </h1>
           </div>
           <div className="flex items-center gap-2">
             {isLoading ? (
@@ -597,62 +779,92 @@ function App() {
           </div>
         </header>
 
-        <section className="mt-5 overflow-hidden rounded-[30px] border border-line bg-gradient-to-br from-panel2/92 to-night/92 p-5 shadow-panel">
-          <div className="relative">
-            <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-mint/10 blur-2xl" />
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-white/48">Сводка по активным городам</p>
-                <div className="mt-2 flex items-end gap-2">
-          <strong className="text-5xl font-black tracking-tight">
-            <LoadingNumber loading={isLoading}>{allSheets}</LoadingNumber>
-          </strong>
-                  <span className="pb-2 text-sm text-sky">ваучеров всего</span>
+        {activeTab === 'sheets' ? (
+          <>
+            <section className="mt-5 overflow-hidden rounded-[30px] border border-line bg-gradient-to-br from-panel2/92 to-night/92 p-5 shadow-panel">
+              <div className="relative">
+                <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-mint/10 blur-2xl" />
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm text-white/48">Сводка по активным городам</p>
+                    <div className="mt-2 flex items-end gap-2">
+                      <strong className="text-5xl font-black tracking-tight">
+                        <LoadingNumber loading={isLoading}>{allSheets}</LoadingNumber>
+                      </strong>
+                      <span className="pb-2 text-sm text-sky">ваучеров всего</span>
+                    </div>
+                  </div>
+                  <div className="grid h-14 w-14 place-items-center rounded-2xl bg-mint/12 text-mint">
+                    <BarChart3 size={26} />
+                  </div>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-mint/25 bg-mint/12 p-3 shadow-[0_0_32px_rgba(73,242,186,.18)]">
+                    <p className="text-xs text-mint/90">Подписало</p>
+                    <strong className="mt-1 block text-3xl font-black text-mint drop-shadow-[0_0_16px_rgba(73,242,186,.58)]">
+                      <LoadingNumber loading={isLoading}>{allSigned}</LoadingNumber>
+                    </strong>
+                  </div>
+                  <div className="rounded-2xl border border-coral/25 bg-coral/12 p-3 shadow-[0_0_32px_rgba(255,112,102,.18)]">
+                    <p className="text-xs text-coral/90">Не подписало</p>
+                    <strong className="mt-1 block text-3xl font-black text-coral drop-shadow-[0_0_16px_rgba(255,112,102,.58)]">
+                      <LoadingNumber loading={isLoading}>{allUnsigned}</LoadingNumber>
+                    </strong>
+                  </div>
                 </div>
               </div>
-              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-mint/12 text-mint">
-                <BarChart3 size={26} />
-              </div>
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-mint/25 bg-mint/12 p-3 shadow-[0_0_32px_rgba(73,242,186,.18)]">
-                <p className="text-xs text-mint/90">Подписало</p>
-                <strong className="mt-1 block text-3xl font-black text-mint drop-shadow-[0_0_16px_rgba(73,242,186,.58)]">
-                  <LoadingNumber loading={isLoading}>{allSigned}</LoadingNumber>
-                </strong>
-              </div>
-              <div className="rounded-2xl border border-coral/25 bg-coral/12 p-3 shadow-[0_0_32px_rgba(255,112,102,.18)]">
-                <p className="text-xs text-coral/90">Не подписало</p>
-                <strong className="mt-1 block text-3xl font-black text-coral drop-shadow-[0_0_16px_rgba(255,112,102,.58)]">
-                  <LoadingNumber loading={isLoading}>{allUnsigned}</LoadingNumber>
-                </strong>
-              </div>
-            </div>
-          </div>
-        </section>
+            </section>
 
-        <section className="mt-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white/74">Города</h2>
-            <span className="text-xs text-white/35">{isLoading ? 'обновляю...' : dataLabel}</span>
-          </div>
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-            {cities.map((city) => (
-              <CityButton key={city.id} city={city} selected={selectedId === city.id} onClick={() => setSelectedId(city.id)} loading={isLoading} />
-            ))}
-          </div>
-        </section>
+            <section className="mt-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-white/74">Города</h2>
+                <span className="text-xs text-white/35">{isLoading ? 'обновляю...' : dataLabel}</span>
+              </div>
+              <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+                {cities.map((city) => (
+                  <CityButton key={city.id} city={city} selected={selectedId === city.id} onClick={() => setSelectedId(city.id)} loading={isLoading} />
+                ))}
+              </div>
+            </section>
 
-        <div className="mt-4">
-          <AnimatePresence mode="wait">
-            {selectedCity.status === 'active' ? (
-              <ActiveCityPanel city={selectedCity} loading={isLoading} onOpenList={(city, type, source) => setChildrenList({ city, type, source })} />
-            ) : (
-              <StubPanel city={selectedCity} />
-            )}
-          </AnimatePresence>
-        </div>
+            <div className="mt-4">
+              <AnimatePresence mode="wait">
+                {selectedCity.status === 'active' ? (
+                  <ActiveCityPanel city={selectedCity} loading={isLoading} onOpenList={(city, type, source) => setChildrenList({ city, type, source })} />
+                ) : (
+                  <StubPanel city={selectedCity} />
+                )}
+              </AnimatePresence>
+            </div>
+          </>
+        ) : (
+          <ApprovalsPage cities={cities} loading={isLoading} updatedAt={isLoading ? 'обновляю...' : updatedAt} />
+        )}
       </main>
+      <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(.75rem,env(safe-area-inset-bottom))]">
+        <div className="grid grid-cols-2 gap-2 rounded-[26px] border border-line bg-night/88 p-2 shadow-panel backdrop-blur-2xl">
+          <button
+            type="button"
+            onClick={() => setActiveTab('sheets')}
+            className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition active:scale-[0.98] ${
+              activeTab === 'sheets' ? 'bg-mint/14 text-mint shadow-halo' : 'text-white/45'
+            }`}
+          >
+            <FileCheck2 size={18} />
+            Табеля
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('approvals')}
+            className={`flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition active:scale-[0.98] ${
+              activeTab === 'approvals' ? 'bg-mint/14 text-mint shadow-halo' : 'text-white/45'
+            }`}
+          >
+            <CheckCircle2 size={18} />
+            Согласования
+          </button>
+        </div>
+      </nav>
       <AnimatePresence>
         {childrenList ? <ChildrenModal payload={childrenList} onClose={() => setChildrenList(null)} /> : null}
       </AnimatePresence>

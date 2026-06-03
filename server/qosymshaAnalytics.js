@@ -204,6 +204,147 @@ function latestTen(children) {
     .slice(0, 10);
 }
 
+const QOSYMSHA_STATUS_META = {
+  1: { id: 'open', label: 'Открыт', tone: 'sky', step: 0 },
+  2: { id: 'parents', label: 'На утверждении у родителя', tone: 'coral', step: 1 },
+  3: { id: 'customer', label: 'На утверждении у заказчика', tone: 'amber', step: 2 },
+  4: { id: 'revision', label: 'На доработке у поставщика', tone: 'coral', step: 1 },
+  5: { id: 'payment_docs', label: 'На выставлении платежных документов', tone: 'mint', step: 3 },
+  6: { id: 'paused', label: 'Рассмотрение приостановлено', tone: 'amber', step: 1 },
+  7: { id: 'invalid', label: 'Недействительный', tone: 'coral', step: 0 },
+  8: { id: 'closed', label: 'Закрыт', tone: 'mint', step: 4 }
+};
+
+function getTimesheetStatus(sheet) {
+  const state = Number(sheet?.State);
+  return QOSYMSHA_STATUS_META[state] || {
+    id: `state_${state || 'unknown'}`,
+    label: 'Статус не определен',
+    tone: 'sky',
+    step: 0
+  };
+}
+
+function pickApprovalTimesheets(timesheets) {
+  const active = timesheets.filter((sheet) => Number(sheet?.VisitCount || 0) > 0 && ![7, 8].includes(Number(sheet?.State)));
+  if (active.length) return active.slice(0, 1);
+  return timesheets.slice(0, 1);
+}
+
+function createApproval(source, timesheets, signed, unsigned) {
+  const sheets = pickApprovalTimesheets(timesheets);
+  const statusCounts = [];
+  let completed = 0;
+  let currentStep = 0;
+
+  for (const sheet of sheets) {
+    const status = getTimesheetStatus(sheet);
+    const existing = statusCounts.find((item) => item.id === status.id);
+    if (existing) existing.count += 1;
+    else statusCounts.push({ ...status, count: 1 });
+    currentStep = Math.max(currentStep, status.step);
+    if (status.id === 'payment_docs' || status.id === 'closed') completed += 1;
+  }
+
+  const primary = sheets[0] ? getTimesheetStatus(sheets[0]) : null;
+  const allParentsSigned = unsigned === 0 && signed > 0;
+  const ready = sheets.length > 0 && completed === sheets.length;
+  const headline = primary?.id === 'parents' && allParentsSigned
+    ? 'Все подписали, можно отправлять заказчику'
+    : primary?.id === 'parents'
+      ? 'Ждем утверждение родителей'
+      : primary?.id === 'customer'
+        ? 'На утверждении у заказчика'
+        : primary?.id === 'payment_docs'
+          ? 'Можно выставлять платежные документы'
+          : primary?.label || 'Статусы Qosymsha обновлены';
+  const nextAction = primary?.id === 'parents' && allParentsSigned
+    ? 'Отправьте на утверждение заказчику'
+    : primary?.id === 'parents'
+      ? 'Дождаться подписей родителей'
+      : primary?.id === 'customer'
+        ? 'Ждем утверждение заказчика'
+        : primary?.id === 'payment_docs'
+          ? 'Выставить платежные документы'
+          : 'Проверьте табель на платформе';
+
+  return {
+    platform: 'Qosymsha',
+    sourceId: source.id,
+    sourceName: source.name,
+    total: sheets.length,
+    completed,
+    readyForActs: statusCounts.find((item) => item.id === 'payment_docs')?.count || 0,
+    currentStep,
+    progress: Math.round((completed / Math.max(sheets.length, 1)) * 100),
+    statusCounts,
+    sheets: sheets.map((sheet) => {
+      const status = getTimesheetStatus(sheet);
+      return {
+        id: sheet?.Id,
+        period: sheet?.AccountingPeriod || '',
+        statusId: status.id,
+        status: status.label,
+        tone: status.tone,
+        visits: sheet?.VisitCount || 0
+      };
+    }),
+    headline,
+    nextAction,
+    ready
+  };
+}
+
+function combineApprovals(sourceResults) {
+  const approvals = sourceResults.map((source) => source.approval).filter(Boolean);
+  const statusCounts = [];
+  let total = 0;
+  let completed = 0;
+  let readyForActs = 0;
+  let currentStep = 0;
+
+  for (const approval of approvals) {
+    total += approval.total;
+    completed += approval.completed;
+    readyForActs += approval.readyForActs;
+    currentStep = Math.max(currentStep, approval.currentStep);
+    for (const status of approval.statusCounts || []) {
+      const existing = statusCounts.find((item) => item.id === status.id);
+      if (existing) existing.count += status.count;
+      else statusCounts.push({ ...status });
+    }
+  }
+
+  const ready = total > 0 && completed === total;
+  const customer = statusCounts.find((item) => item.id === 'customer')?.count || 0;
+  const parents = statusCounts.find((item) => item.id === 'parents')?.count || 0;
+  return {
+    platform: 'Qosymsha',
+    total,
+    completed,
+    readyForActs,
+    currentStep,
+    progress: Math.round((completed / Math.max(total, 1)) * 100),
+    statusCounts,
+    sources: approvals,
+    headline: ready
+      ? 'Все табели готовы к платежным документам'
+      : customer
+        ? 'Есть табели на утверждении у заказчика'
+        : parents
+          ? 'Есть табели у родителей'
+          : 'Статусы Qosymsha обновлены',
+    nextAction: ready
+      ? 'Выставить платежные документы'
+      : customer
+        ? 'Ждем утверждение заказчика'
+        : parents
+          ? 'Дождаться подписей или отправить после готовности'
+          : 'Проверить табели на платформе',
+    ready
+  };
+}
+
 function pickActiveTimesheets(timesheets) {
   const parentReviewSheets = timesheets.filter((sheet) => Number(sheet?.State) === 2);
   if (parentReviewSheets.length) return parentReviewSheets;
@@ -214,7 +355,8 @@ function pickActiveTimesheets(timesheets) {
 
 async function countSource(source) {
   const jar = await login(source);
-  const timesheets = pickActiveTimesheets(await fetchTimesheets(jar));
+  const allTimesheets = await fetchTimesheets(jar);
+  const timesheets = pickActiveTimesheets(allTimesheets);
   const signedChildren = [];
   const unsignedChildren = [];
 
@@ -252,6 +394,7 @@ async function countSource(source) {
     name: source.name,
     signed: signedChildren.length,
     unsigned: unsignedChildren.length,
+    approval: createApproval(source, allTimesheets, signedChildren.length, unsignedChildren.length),
     signedChildren,
     unsignedChildren
   };
@@ -293,6 +436,7 @@ export async function getQosymshaSummary() {
         signedChildren,
         unsignedChildren,
         recentSignedChildren: latestTen(signedChildren),
+        approval: combineApprovals(sourceResults),
         sources: sourceResults.map(({ signedChildren: _signedChildren, unsignedChildren: _unsignedChildren, ...item }) => item)
       }
     ],

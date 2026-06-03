@@ -285,6 +285,92 @@ function sortRecentSigned(children) {
     .slice(0, 10);
 }
 
+const DAMUBALA_STATUS_META = {
+  review_parent: { id: 'parents', label: 'На согласовании у родителей', tone: 'coral', step: 1 },
+  review_operator: { id: 'operator', label: 'На согласовании у оператора', tone: 'amber', step: 2 },
+  review_operator_success: { id: 'approved', label: 'Согласован оператором', tone: 'mint', step: 3 }
+};
+
+function getSheetStatus(sheet) {
+  const status = sheet?.hVisitHistoryStatus || {};
+  const code = status.code || `status_${status.id || 'unknown'}`;
+  const known = DAMUBALA_STATUS_META[code];
+  return {
+    id: known?.id || code,
+    code,
+    label: known?.label || status.nameRu || 'Статус не определен',
+    tone: known?.tone || 'sky',
+    step: known?.step || 0
+  };
+}
+
+function createApprovalBucket(platform) {
+  return {
+    platform,
+    total: 0,
+    completed: 0,
+    readyForActs: 0,
+    currentStep: 0,
+    statusCounts: [],
+    sheets: []
+  };
+}
+
+function addApprovalSheet(record, sheet) {
+  const status = getSheetStatus(sheet);
+  const approval = record.approval;
+  const existing = approval.statusCounts.find((item) => item.id === status.id);
+  if (existing) {
+    existing.count += 1;
+  } else {
+    approval.statusCounts.push({ ...status, count: 1 });
+  }
+
+  approval.total += 1;
+  approval.currentStep = Math.max(approval.currentStep, status.step);
+  if (status.id === 'approved') {
+    approval.completed += 1;
+    approval.readyForActs += 1;
+  }
+  approval.sheets.push({
+    id: sheet?.id,
+    period: `${String(sheet?.month || '').padStart(2, '0')}.${sheet?.year || ''}`,
+    statusId: status.id,
+    status: status.label,
+    tone: status.tone,
+    signedParentsCount: sheet?.signedParentsCount || 0,
+    parentsCount: sheet?.parentsCount || 0
+  });
+}
+
+function finalizeApproval(approval) {
+  const order = ['parents', 'operator', 'approved'];
+  approval.statusCounts.sort((left, right) => order.indexOf(left.id) - order.indexOf(right.id));
+  const parents = approval.statusCounts.find((item) => item.id === 'parents')?.count || 0;
+  const operator = approval.statusCounts.find((item) => item.id === 'operator')?.count || 0;
+  const approved = approval.statusCounts.find((item) => item.id === 'approved')?.count || 0;
+  const ready = approval.total > 0 && approved === approval.total;
+  return {
+    ...approval,
+    progress: Math.round((approved / Math.max(approval.total, 1)) * 100),
+    headline: ready
+      ? 'Все табели согласованы оператором'
+      : operator
+        ? 'Часть табелей на рассмотрении оператора'
+        : parents
+          ? 'Есть табели на согласовании у родителей'
+          : 'Статусы табелей обновлены',
+    nextAction: ready
+      ? 'Можно выставлять акты'
+      : operator
+        ? 'Ждем рассмотрение оператора'
+        : parents
+          ? 'Дожидаемся подписей родителей'
+          : 'Проверьте статусы на платформе',
+    ready
+  };
+}
+
 async function mapWithConcurrency(items, limit, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
@@ -318,6 +404,7 @@ async function countAccount(account) {
         totalSheets: 0,
         unsignedChildren: [],
         signedChildren: [],
+        approval: createApprovalBucket('Damubala'),
         passwordUpdated: auth.passwordUpdated
       }
     ])
@@ -333,6 +420,7 @@ async function countAccount(account) {
     const history = await getSignatureHistory(attendanceId, headers);
     const counts = countParentStatuses(history);
     const record = cityMap.get(city.id);
+    addApprovalSheet(record, sheet);
     record.signed += counts.signed;
     record.unsigned += counts.unsigned;
     record.totalSheets += counts.signed + counts.unsigned;
@@ -359,6 +447,7 @@ async function countAccount(account) {
 
   return Array.from(cityMap.values()).map((city) => ({
     ...city,
+    approval: finalizeApproval(city.approval),
     recentSignedChildren: sortRecentSigned(city.signedChildren)
   }));
 }
