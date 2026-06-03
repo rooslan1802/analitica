@@ -10,6 +10,7 @@ import {
   Phone,
   RefreshCw,
   Search,
+  Send,
   Sparkles,
   UserRound,
   X
@@ -616,22 +617,31 @@ function ApprovalActionButton({ city, approval, onRefresh }) {
         type="button"
         onClick={submitReadySheets}
         disabled={!readyToSubmit || isSubmitting}
-        className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
+        className={`group flex w-full items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 text-left transition active:scale-[0.99] ${
           readyToSubmit
-            ? 'border-mint/30 bg-gradient-to-br from-mint/18 to-sky/10 text-mint shadow-halo'
-            : 'border-line bg-white/[0.045] text-white/48'
+            ? 'border-mint/35 bg-gradient-to-r from-mint/18 via-mint/8 to-sky/10 text-mint shadow-halo hover:border-mint/55'
+            : 'border-line bg-white/[0.035] text-white/46'
         }`}
       >
-        <span className="min-w-0">
-          <span className="block text-base font-black leading-5 text-white">
-            {isSubmitting ? 'Отправляю...' : 'Отправить полные табеля'}
+        <span className="flex min-w-0 items-center gap-3">
+          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border ${
+            readyToSubmit ? 'border-mint/25 bg-mint/12 text-mint' : 'border-white/8 bg-white/[0.04] text-white/35'
+          }`}>
+            {isSubmitting ? <RefreshCw size={17} className="animate-spin" /> : <Send size={17} />}
           </span>
-          <span className="mt-0.5 block text-xs text-white/50">
-            {readyToSubmit ? 'Все родители подписали' : approval.nextAction}
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-black leading-5 text-white">
+              {isSubmitting ? 'Отправляю...' : 'Отправить полные табеля'}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-white/45">
+              {readyToSubmit ? 'Готово к оператору' : approval.nextAction}
+            </span>
           </span>
         </span>
-        <span className="grid h-11 min-w-11 place-items-center rounded-xl bg-white/10 px-3 text-xl font-black text-white">
-          {isSubmitting ? <RefreshCw size={18} className="animate-spin" /> : readyToSubmit}
+        <span className={`grid h-9 min-w-9 shrink-0 place-items-center rounded-full px-2 text-base font-black ${
+          readyToSubmit ? 'bg-mint text-[#05120f]' : 'bg-white/10 text-white/70'
+        }`}>
+          {readyToSubmit}
         </span>
       </button>
       {message ? <p className="mt-2 text-xs text-white/48">{message}</p> : null}
