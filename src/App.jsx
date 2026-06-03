@@ -564,7 +564,6 @@ function ApprovalActStatusPill({ cityId, status, onClick }) {
           </span>
         ) : null}
       </div>
-      <div className="mt-1 truncate text-[11px] text-white/42">{formatMoney(status.amount)}</div>
     </button>
   );
 }
@@ -617,22 +616,21 @@ function ApprovalActionButton({ city, approval, onRefresh }) {
         type="button"
         onClick={submitReadySheets}
         disabled={!readyToSubmit || isSubmitting}
-        className={`flex w-full items-center justify-between gap-3 rounded-[24px] border px-4 py-4 text-left transition active:scale-[0.99] ${
+        className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
           readyToSubmit
             ? 'border-mint/30 bg-gradient-to-br from-mint/18 to-sky/10 text-mint shadow-halo'
             : 'border-line bg-white/[0.045] text-white/48'
         }`}
       >
         <span className="min-w-0">
-          <span className="mb-1 block text-[11px] uppercase tracking-[0.14em] text-white/35">Действие</span>
-          <span className="block text-lg font-black leading-6 text-white">
-            {isSubmitting ? 'Отправляю табеля...' : 'Отправить полные табеля на рассмотрение'}
+          <span className="block text-base font-black leading-5 text-white">
+            {isSubmitting ? 'Отправляю...' : 'Отправить полные табеля'}
           </span>
-          <span className="mt-1 block text-sm text-white/55">
+          <span className="mt-0.5 block text-xs text-white/50">
             {readyToSubmit ? 'Все родители подписали' : approval.nextAction}
           </span>
         </span>
-        <span className="grid h-14 min-w-14 place-items-center rounded-2xl bg-white/10 px-4 text-2xl font-black text-white">
+        <span className="grid h-11 min-w-11 place-items-center rounded-xl bg-white/10 px-3 text-xl font-black text-white">
           {isSubmitting ? <RefreshCw size={18} className="animate-spin" /> : readyToSubmit}
         </span>
       </button>

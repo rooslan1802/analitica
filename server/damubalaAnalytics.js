@@ -379,12 +379,12 @@ const DAMUBALA_ACT_STATUS_META = [
 ];
 
 const DAMUBALA_ACT_COUNT_ALIASES = {
-  allActsCount: ['allActsCount', 'allActs', 'all', 'total', 'count'],
-  waitingForDocument: ['waitingForDocument', 'waitingFileActs', 'waitingFile', 'waitingDocument'],
-  checkESF: ['checkESF', 'checkEsf', 'actESFStatusSuppl', 'actEsfStatusSuppl'],
-  notSigned: ['notSigned', 'waitingOperatorActs', 'waitingOperator', 'onSigning'],
-  done: ['done', 'completed', 'finished', 'approve', 'approved'],
-  rejected: ['rejected', 'denied', 'refused']
+  allActsCount: ['allActsCount', 'allActCount', 'allActs', 'all', 'total', 'count'],
+  waitingForDocument: ['waitingForDocument', 'waitingForDocumentCount', 'waitingFileActs', 'waitingFileActsCount', 'waitingFile', 'waitingDocument'],
+  checkESF: ['checkESF', 'checkESFCount', 'checkEsf', 'checkEsfCount', 'actESFStatusSuppl', 'actESFStatusSupplCount', 'actEsfStatusSuppl'],
+  notSigned: ['notSigned', 'notSignedCount', 'waitingOperatorActs', 'waitingOperatorActsCount', 'waitingOperator', 'onSigning'],
+  done: ['done', 'doneCount', 'completed', 'completedCount', 'finished', 'approve', 'approved'],
+  rejected: ['rejected', 'rejectedCount', 'denied', 'deniedCount', 'refused']
 };
 
 function getEmptyActCounts() {
@@ -402,6 +402,11 @@ function unwrapPayload(payload) {
 }
 
 function readNumberByAliases(payload, aliases) {
+  const normalizedEntries = Object.entries(payload || {}).map(([key, value]) => [
+    key.toLowerCase().replace(/[^a-z0-9]/g, ''),
+    value
+  ]);
+
   for (const alias of aliases) {
     if (payload?.[alias] !== undefined && payload?.[alias] !== null) {
       const value = Number(payload[alias]);
@@ -412,6 +417,13 @@ function readNumberByAliases(payload, aliases) {
     const matchedKey = Object.keys(payload || {}).find((key) => key.toLowerCase() === lowerAlias);
     if (matchedKey) {
       const value = Number(payload[matchedKey]);
+      if (Number.isFinite(value)) return value;
+    }
+
+    const normalizedAlias = lowerAlias.replace(/[^a-z0-9]/g, '');
+    const fuzzy = normalizedEntries.find(([key]) => key === normalizedAlias || key === `${normalizedAlias}count`);
+    if (fuzzy) {
+      const value = Number(fuzzy[1]);
       if (Number.isFinite(value)) return value;
     }
   }
@@ -536,18 +548,21 @@ function countFormattedActsByStatus(acts) {
 }
 
 async function getReliableActSummary(headers, account) {
+  const counts = normalizeActCounts(await getActCounts(headers));
   let acts = [];
   try {
     acts = (await getActs(headers)).map((act) => formatAct(act, account));
   } catch {
     acts = [];
   }
+
+  if (hasAnyActCount(counts)) {
+    return addActAmounts(counts, acts);
+  }
+
   if (acts.length) {
     return addActAmounts(countFormattedActsByStatus(acts), acts);
   }
-
-  const counts = normalizeActCounts(await getActCounts(headers));
-  if (hasAnyActCount(counts)) return { counts, amountByKey: getEmptyActCounts(), acts };
 
   return { counts: counts || getEmptyActCounts(), amountByKey: getEmptyActCounts(), acts };
 }
