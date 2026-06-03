@@ -1,3 +1,5 @@
+import https from 'node:https';
+
 const BASE_URL = 'https://damubala.kz';
 
 function requiredEnv(name) {
@@ -61,6 +63,41 @@ async function apiRequest(path, options = {}, timeoutMs = 45000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function apiJsonRequestLenient(path, options = {}, timeoutMs = 45000) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${BASE_URL}${path}`);
+    const req = https.request(url, {
+      method: options.method || 'GET',
+      headers: options.headers || {},
+      insecureHTTPParser: true
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        let data = {};
+        try {
+          data = body ? JSON.parse(body) : {};
+        } catch {
+          data = {};
+        }
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          data
+        });
+      });
+    });
+
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('timeout')));
+    if (options.body) req.write(options.body);
+    req.end();
+  });
 }
 
 function pickAuth(data) {
@@ -196,12 +233,12 @@ async function getActiveTimeSheets(headers) {
 
 async function getActCounts(headers) {
   try {
-    const response = await apiRequest('/v1/Act/GetCount', {
+    const response = await apiJsonRequestLenient('/v1/Act/GetCount', {
       method: 'GET',
       headers
     }, 30000);
     if (!response.ok) return null;
-    return readJson(response);
+    return response.data;
   } catch {
     return null;
   }
@@ -234,13 +271,12 @@ async function getActs(headers) {
       PageNumber: String(page),
       PageSize: String(pageSize)
     });
-    const response = await apiRequest(`/v1/Act/Get?${params.toString()}`, {
+    const response = await apiJsonRequestLenient(`/v1/Act/Get?${params.toString()}`, {
       method: 'GET',
       headers
     }, 30000);
     if (!response.ok) break;
-    const data = await readJson(response);
-    const rows = pickRows(data);
+    const rows = pickRows(response.data);
     if (!rows.length) break;
     all.push(...rows);
     if (rows.length < pageSize) break;
