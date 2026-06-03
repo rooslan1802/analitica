@@ -263,10 +263,10 @@ function pickRows(payload) {
 }
 
 async function getActs(headers) {
-  const pageSize = 100;
+  const pageSize = 10;
   const all = [];
 
-  for (let page = 1; page <= 20; page += 1) {
+  for (let page = 1; page <= 50; page += 1) {
     const params = new URLSearchParams({
       PageNumber: String(page),
       PageSize: String(pageSize)
@@ -522,9 +522,16 @@ function collectStrings(value, result = []) {
 }
 
 function pickActCityLabel(act, account) {
-  const text = normalize(collectStrings(act).join(' '));
+  const citySource = [
+    act?.supplierName,
+    act?.organizationName,
+    act?.regionName,
+    act?.cityName,
+    ...(Array.isArray(act?.hCourseDirections) ? act.hCourseDirections.map((item) => item?.nameRu) : [])
+  ].filter(Boolean).join(' ');
+  const text = normalize(citySource || collectStrings(act).join(' '));
   if (text.includes('рудн') || text.includes('костанай')) return 'Рудный';
-  if (text.includes('ско') || text.includes('северо-казахстан')) return 'СКО';
+  if (/(^|\\s)ско($|\\s)/.test(text) || text.includes('северо-казахстан')) return 'СКО';
   if (text.includes('туркестан')) return 'Туркестан';
   if (account.cities.length === 1) return account.cities[0].region || account.cities[0].name;
   return 'СКО / Рудный';
@@ -570,7 +577,7 @@ function addActAmounts(counts, acts) {
     const status = DAMUBALA_ACT_STATUS_META.find((item) => item.id === act.statusId);
     if (status) amountByKey[status.key] += Number(act.amount || 0);
   }
-  return { counts, amountByKey };
+  return { counts, amountByKey, acts };
 }
 
 function countFormattedActsByStatus(acts) {
@@ -587,7 +594,16 @@ async function getReliableActSummary(headers, account) {
   const counts = normalizeActCounts(await getActCounts(headers));
   let acts = [];
   try {
-    acts = (await getActs(headers)).map((act) => formatAct(act, account));
+    const rawActs = await getActs(headers);
+    acts = rawActs
+      .map((act) => {
+        try {
+          return formatAct(act, account);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
   } catch {
     acts = [];
   }
