@@ -357,6 +357,12 @@ const DAMUBALA_STATUS_META = {
   review_operator_success: { id: 'approved', label: 'Согласован оператором', tone: 'mint', step: 3 }
 };
 
+const DAMUBALA_STATUS_BY_ID = {
+  1: DAMUBALA_STATUS_META.review_parent,
+  3: DAMUBALA_STATUS_META.review_operator,
+  4: DAMUBALA_STATUS_META.review_operator_success
+};
+
 const DAMUBALA_ACT_STATUS_META = [
   { key: 'allActsCount', id: 'all', label: 'Все акты', tone: 'sky' },
   { key: 'waitingForDocument', id: 'waiting-document', label: 'Ожидает прикрепления ЭСФ', tone: 'amber' },
@@ -459,7 +465,7 @@ function formatActStatusCounts(counts) {
 function getSheetStatus(sheet) {
   const status = sheet?.hVisitHistoryStatus || {};
   const code = status.code || `status_${status.id || 'unknown'}`;
-  const known = DAMUBALA_STATUS_META[code];
+  const known = DAMUBALA_STATUS_META[code] || DAMUBALA_STATUS_BY_ID[Number(status.id)];
   return {
     id: known?.id || code,
     code,
@@ -467,6 +473,10 @@ function getSheetStatus(sheet) {
     tone: known?.tone || 'sky',
     step: known?.step || 0
   };
+}
+
+function shouldCountVoucherSheet(sheet) {
+  return getSheetStatus(sheet).id === 'parents';
 }
 
 function createApprovalBucket(platform) {
@@ -603,10 +613,13 @@ async function countAccount(account) {
     const city = account.cities.find((item) => matchesRegion(region, item.region));
     if (!city) return;
 
-    const history = await getSignatureHistory(attendanceId, headers);
-    const counts = countSheetParents(sheet, history);
     const record = cityMap.get(city.id);
     addApprovalSheet(record, sheet);
+
+    if (!shouldCountVoucherSheet(sheet)) return;
+
+    const history = await getSignatureHistory(attendanceId, headers);
+    const counts = countSheetParents(sheet, history);
     record.signed += counts.signed;
     record.unsigned += counts.unsigned;
     record.totalSheets += counts.signed + counts.unsigned;
