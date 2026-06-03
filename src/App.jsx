@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   Clock3,
   ClipboardCheck,
-  Database,
   FileCheck2,
   MessageCircle,
   Minus,
@@ -13,7 +12,6 @@ import {
   Search,
   Sparkles,
   UserRound,
-  Wifi,
   X
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -60,6 +58,31 @@ function toneClasses(tone) {
   return toneClass[tone] || toneClass.sky;
 }
 
+const platformLogos = {
+  damubala: '/logos/damubala.ico',
+  artsport: '/logos/artsport.ico',
+  qosymsha: '/logos/qosymsha.png'
+};
+
+function platformKey(platform = '') {
+  const value = String(platform).toLowerCase();
+  if (value.includes('art')) return 'artsport';
+  if (value.includes('qosymsha')) return 'qosymsha';
+  return 'damubala';
+}
+
+function PlatformLogo({ platform, size = 'md' }) {
+  const key = platformKey(platform);
+  const sizeClass = size === 'sm' ? 'h-5 w-5' : size === 'lg' ? 'h-9 w-9' : 'h-7 w-7';
+  const imageClass = key === 'qosymsha' ? 'scale-[1.28]' : 'scale-110';
+
+  return (
+    <span className={`${sizeClass} grid shrink-0 place-items-center overflow-hidden rounded-full border border-white/15 bg-white/92 shadow-[0_0_22px_rgba(73,242,186,.16)]`}>
+      <img src={platformLogos[key]} alt="" className={`${imageClass} h-full w-full object-contain`} />
+    </span>
+  );
+}
+
 function CityButton({ city, selected, onClick, loading }) {
   return (
     <button
@@ -71,7 +94,7 @@ function CityButton({ city, selected, onClick, loading }) {
     >
       <span className="block text-sm font-semibold">{city.name}</span>
       <span className="mt-1 flex items-center gap-1 text-[11px]">
-        {city.status === 'active' ? <Wifi size={12} /> : <Minus size={12} />}
+        {city.status === 'active' ? <PlatformLogo platform={city.platform} size="sm" /> : <Minus size={12} />}
         {city.status === 'active' ? city.platform : 'скоро'}
       </span>
       {city.status === 'active' ? (
@@ -236,7 +259,7 @@ function ActiveCityPanel({ city, onOpenList, loading }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-mint/20 bg-mint/10 px-3 py-1 text-xs text-mint">
-            <Database size={13} />
+            <PlatformLogo platform={city.platform} size="sm" />
             {city.platform}
           </div>
           <h2 className="mt-4 text-2xl font-bold tracking-tight">{city.name}</h2>
@@ -529,7 +552,7 @@ function ApprovalCard({ city }) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-sky/20 bg-sky/10 px-3 py-1 text-xs text-sky">
-              <Database size={13} />
+              <PlatformLogo platform={city.platform || 'ArtSport'} size="sm" />
               {city.platform || 'ArtSport'}
             </div>
             <h3 className="mt-3 text-xl font-bold">{city.name}</h3>
@@ -548,7 +571,7 @@ function ApprovalCard({ city }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-mint/20 bg-mint/10 px-3 py-1 text-xs text-mint">
-            <Database size={13} />
+            <PlatformLogo platform={approval.platform || city.platform} size="sm" />
             {approval.platform || city.platform}
           </div>
           <h3 className="mt-3 text-xl font-bold">{city.name}</h3>
