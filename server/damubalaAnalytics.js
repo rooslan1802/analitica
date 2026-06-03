@@ -216,6 +216,12 @@ function pickRows(payload) {
   if (Array.isArray(payload?.data?.data)) return payload.data.data;
   if (Array.isArray(payload?.data?.result)) return payload.data.result;
   if (Array.isArray(payload?.result?.data)) return payload.result.data;
+  if (payload && typeof payload === 'object') {
+    for (const value of Object.values(payload)) {
+      const rows = pickRows(value);
+      if (rows.length) return rows;
+    }
+  }
   return [];
 }
 
@@ -425,7 +431,7 @@ function hasAnyActCount(counts) {
   return DAMUBALA_ACT_STATUS_META.some((status) => Number(counts?.[status.key] || 0) > 0);
 }
 
-function countActsByStatus(acts) {
+function countRawActsByStatus(acts) {
   const counts = getEmptyActCounts();
   counts.allActsCount = acts.length;
 
@@ -441,24 +447,118 @@ function countActsByStatus(acts) {
   return counts;
 }
 
-async function getReliableActCounts(headers) {
-  const counts = normalizeActCounts(await getActCounts(headers));
-  if (hasAnyActCount(counts)) return counts;
-
-  try {
-    const acts = await getActs(headers);
-    return countActsByStatus(acts);
-  } catch {
-    return counts || getEmptyActCounts();
-  }
+function pickActStatus(act) {
+  const statusId = Number(act?.hActStatus?.id || act?.hActStatusId || act?.statusId || 0);
+  if (statusId === 2) return DAMUBALA_ACT_STATUS_META.find((status) => status.key === 'waitingForDocument');
+  if (statusId === 4) return DAMUBALA_ACT_STATUS_META.find((status) => status.key === 'checkESF');
+  if (statusId === 1) return DAMUBALA_ACT_STATUS_META.find((status) => status.key === 'notSigned');
+  if (statusId === 5) return DAMUBALA_ACT_STATUS_META.find((status) => status.key === 'done');
+  if (statusId === 3) return DAMUBALA_ACT_STATUS_META.find((status) => status.key === 'rejected');
+  return { id: 'unknown', label: act?.hActStatus?.nameRu || 'Статус не определен', tone: 'sky', key: 'unknown' };
 }
 
-function formatActStatusCounts(counts) {
+function collectStrings(value, result = []) {
+  if (!value) return result;
+  if (typeof value === 'string') {
+    result.push(value);
+    return result;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectStrings(item, result));
+    return result;
+  }
+  if (typeof value === 'object') {
+    Object.values(value).forEach((item) => collectStrings(item, result));
+  }
+  return result;
+}
+
+function pickActCityLabel(act, account) {
+  const text = normalize(collectStrings(act).join(' '));
+  if (text.includes('рудн') || text.includes('костанай')) return 'Рудный';
+  if (text.includes('ско') || text.includes('северо-казахстан')) return 'СКО';
+  if (text.includes('туркестан')) return 'Туркестан';
+  if (account.cities.length === 1) return account.cities[0].region || account.cities[0].name;
+  return 'СКО / Рудный';
+}
+
+function pickActAmount(act) {
+  const candidates = [
+    act?.amount,
+    act?.totalAmount,
+    act?.sum,
+    act?.totalSum,
+    act?.price,
+    act?.paymentAmount
+  ];
+  const value = candidates.map(Number).find((item) => Number.isFinite(item) && item > 0);
+  return value || 0;
+}
+
+function pickActPeriod(act) {
+  if (act?.month && act?.year) return `${String(act.month).padStart(2, '0')}.${act.year}`;
+  if (act?.period) return String(act.period);
+  return '-';
+}
+
+function formatAct(act, account) {
+  const status = pickActStatus(act);
+  return {
+    id: act?.id || act?.actId || act?.number,
+    number: act?.id || act?.actId || act?.number || 'без номера',
+    period: pickActPeriod(act),
+    statusId: status.id,
+    status: status.label,
+    tone: status.tone,
+    cityLabel: pickActCityLabel(act, account),
+    amount: pickActAmount(act)
+  };
+}
+
+function addActAmounts(counts, acts) {
+  const amountByKey = getEmptyActCounts();
+  amountByKey.allActsCount = acts.reduce((sum, act) => sum + Number(act.amount || 0), 0);
+  for (const act of acts) {
+    const status = DAMUBALA_ACT_STATUS_META.find((item) => item.id === act.statusId);
+    if (status) amountByKey[status.key] += Number(act.amount || 0);
+  }
+  return { counts, amountByKey };
+}
+
+function countFormattedActsByStatus(acts) {
+  const counts = getEmptyActCounts();
+  counts.allActsCount = acts.length;
+  for (const act of acts) {
+    const status = DAMUBALA_ACT_STATUS_META.find((item) => item.id === act.statusId);
+    if (status) counts[status.key] += 1;
+  }
+  return counts;
+}
+
+async function getReliableActSummary(headers, account) {
+  let acts = [];
+  try {
+    acts = (await getActs(headers)).map((act) => formatAct(act, account));
+  } catch {
+    acts = [];
+  }
+  if (acts.length) {
+    return addActAmounts(countFormattedActsByStatus(acts), acts);
+  }
+
+  const counts = normalizeActCounts(await getActCounts(headers));
+  if (hasAnyActCount(counts)) return { counts, amountByKey: getEmptyActCounts(), acts };
+
+  return { counts: counts || getEmptyActCounts(), amountByKey: getEmptyActCounts(), acts };
+}
+
+function formatActStatusCounts(counts, amountByKey = {}) {
   return DAMUBALA_ACT_STATUS_META.map((status) => ({
     id: status.id,
     label: status.label,
     tone: status.tone,
-    count: Number(counts?.[status.key] || 0)
+    count: Number(counts?.[status.key] || 0),
+    amount: Number(amountByKey?.[status.key] || 0)
   }));
 }
 
@@ -582,8 +682,8 @@ async function countAccount(account) {
   const auth = await signInWithFallback(account);
   const headers = jsonHeaders(auth.token);
   const sheets = await getActiveTimeSheets(headers);
-  const actCounts = await getReliableActCounts(headers);
-  const actStatusCounts = formatActStatusCounts(actCounts);
+  const actSummary = await getReliableActSummary(headers, account);
+  const actStatusCounts = formatActStatusCounts(actSummary.counts, actSummary.amountByKey);
 
   const cityMap = new Map(
     account.cities.map((city) => [
@@ -599,7 +699,8 @@ async function countAccount(account) {
         signedChildren: [],
         approval: {
           ...createApprovalBucket('Damubala'),
-          actStatusCounts
+          actStatusCounts,
+          acts: actSummary.acts
         },
         passwordUpdated: auth.passwordUpdated
       }

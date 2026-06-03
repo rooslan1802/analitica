@@ -122,6 +122,12 @@ function formatPhone(phone) {
   return phone || 'телефон не указан';
 }
 
+function formatMoney(value) {
+  const amount = Number(value || 0);
+  if (!amount) return '0 ₸';
+  return `${new Intl.NumberFormat('ru-RU').format(amount)} ₸`;
+}
+
 function formatSignedAt(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -527,7 +533,7 @@ function ApprovalStatusPill({ status }) {
   );
 }
 
-function ApprovalActStatusPill({ cityId, status }) {
+function ApprovalActStatusPill({ cityId, status, onClick }) {
   const [increase, setIncrease] = useState(0);
 
   useEffect(() => {
@@ -544,7 +550,11 @@ function ApprovalActStatusPill({ cityId, status }) {
   }, [cityId, status.count, status.id]);
 
   return (
-    <div className={`rounded-2xl border px-3 py-2 ${toneClasses(status.tone)}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-2xl border px-3 py-2 text-left transition active:scale-[0.99] ${toneClasses(status.tone)}`}
+    >
       <div className="text-[11px] leading-4 opacity-85">{status.label}</div>
       <div className="mt-1 flex items-end gap-2">
         <span className="text-xl font-black">{status.count}</span>
@@ -554,7 +564,8 @@ function ApprovalActStatusPill({ cityId, status }) {
           </span>
         ) : null}
       </div>
-    </div>
+      <div className="mt-1 truncate text-[11px] text-white/42">{formatMoney(status.amount)}</div>
+    </button>
   );
 }
 
@@ -601,27 +612,27 @@ function ApprovalActionButton({ city, approval, onRefresh }) {
   }
 
   return (
-    <div className="mt-4 rounded-2xl border border-line bg-white/[0.035] p-3">
-      <p className="text-xs uppercase tracking-[0.14em] text-white/35">Действие</p>
+    <div className="mt-4">
       <button
         type="button"
         onClick={submitReadySheets}
         disabled={!readyToSubmit || isSubmitting}
-        className={`mt-2 flex w-full items-center justify-between gap-3 rounded-2xl border px-3 py-3 text-left transition active:scale-[0.99] ${
+        className={`flex w-full items-center justify-between gap-3 rounded-[24px] border px-4 py-4 text-left transition active:scale-[0.99] ${
           readyToSubmit
-            ? 'border-mint/30 bg-mint/14 text-mint shadow-halo'
-            : 'border-white/10 bg-white/[0.035] text-white/42'
+            ? 'border-mint/30 bg-gradient-to-br from-mint/18 to-sky/10 text-mint shadow-halo'
+            : 'border-line bg-white/[0.045] text-white/48'
         }`}
       >
         <span className="min-w-0">
-          <span className="block text-sm font-black leading-5">
+          <span className="mb-1 block text-[11px] uppercase tracking-[0.14em] text-white/35">Действие</span>
+          <span className="block text-lg font-black leading-6 text-white">
             {isSubmitting ? 'Отправляю табеля...' : 'Отправить полные табеля на рассмотрение'}
           </span>
-          <span className="mt-0.5 block text-xs text-white/48">
+          <span className="mt-1 block text-sm text-white/55">
             {readyToSubmit ? 'Все родители подписали' : approval.nextAction}
           </span>
         </span>
-        <span className="grid h-10 min-w-10 place-items-center rounded-2xl bg-white/10 px-3 text-lg font-black">
+        <span className="grid h-14 min-w-14 place-items-center rounded-2xl bg-white/10 px-4 text-2xl font-black text-white">
           {isSubmitting ? <RefreshCw size={18} className="animate-spin" /> : readyToSubmit}
         </span>
       </button>
@@ -644,11 +655,78 @@ function ApprovalMiniSheet({ sheet }) {
   );
 }
 
+function ActListModal({ city, status, acts, onClose }) {
+  if (!status) return null;
+  const filteredActs = status.id === 'all' ? acts : acts.filter((act) => act.statusId === status.id);
+  const totalAmount = filteredActs.reduce((sum, act) => sum + Number(act.amount || 0), 0);
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[60] flex items-end bg-black/64 px-3 pb-3 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.section
+        initial={{ y: 40 }}
+        animate={{ y: 0 }}
+        exit={{ y: 40 }}
+        transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+        className="mx-auto max-h-[82vh] w-full max-w-md overflow-y-auto rounded-[28px] border border-line bg-night shadow-panel"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 border-b border-line bg-night/95 p-4 backdrop-blur-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className={`text-xs uppercase tracking-[0.18em] ${status.tone === 'coral' ? 'text-coral' : status.tone === 'mint' ? 'text-mint' : status.tone === 'amber' ? 'text-amber' : 'text-sky'}`}>
+                {status.label}
+              </p>
+              <h3 className="mt-1 text-2xl font-black">{city.name}</h3>
+              <p className="mt-1 text-sm text-white/48">{filteredActs.length} актов · {formatMoney(totalAmount)}</p>
+            </div>
+            <button type="button" onClick={onClose} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/[0.06] text-white/72">
+              <X size={22} />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-2 p-4 pb-6">
+          {filteredActs.length ? filteredActs.map((act) => (
+            <article key={`${act.statusId}-${act.id}`} className="rounded-2xl border border-line bg-white/[0.045] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-base font-black">№ {act.number}</p>
+                  <p className="mt-1 text-sm text-white/55">{act.period}</p>
+                </div>
+                <span className={`shrink-0 rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses(act.tone)}`}>
+                  {act.cityLabel}
+                </span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className={`rounded-full border px-2 py-1 text-[11px] font-bold ${toneClasses(act.tone)}`}>
+                  {act.status}
+                </span>
+                <strong className="text-sm text-white">{formatMoney(act.amount)}</strong>
+              </div>
+            </article>
+          )) : (
+            <div className="rounded-2xl border border-line bg-white/[0.035] p-6 text-center text-sm text-white/45">
+              Актов в этом статусе пока нет
+            </div>
+          )}
+        </div>
+      </motion.section>
+    </motion.div>
+  );
+}
+
 function ApprovalCard({ city, onRefresh }) {
   const approval = city.approval;
   const isStub = city.platform === 'ArtSport' || !approval;
   const progress = approval?.progress || 0;
   const actStatusCounts = approval?.actStatusCounts || [];
+  const [selectedActStatus, setSelectedActStatus] = useState(null);
   const isDamubala = platformKey(approval?.platform || city.platform) === 'damubala';
 
   if (isStub) {
@@ -712,7 +790,12 @@ function ApprovalCard({ city, onRefresh }) {
           </div>
           <div className="grid grid-cols-2 gap-2">
             {actStatusCounts.map((status) => (
-              <ApprovalActStatusPill key={status.id} cityId={city.id} status={status} />
+              <ApprovalActStatusPill
+                key={status.id}
+                cityId={city.id}
+                status={status}
+                onClick={() => setSelectedActStatus(status)}
+              />
             ))}
           </div>
         </div>
@@ -741,6 +824,16 @@ function ApprovalCard({ city, onRefresh }) {
           ))}
         </div>
       ) : null}
+      <AnimatePresence>
+        {selectedActStatus ? (
+          <ActListModal
+            city={city}
+            status={selectedActStatus}
+            acts={approval.acts || []}
+            onClose={() => setSelectedActStatus(null)}
+          />
+        ) : null}
+      </AnimatePresence>
     </section>
   );
 }
