@@ -346,10 +346,8 @@ function combineApprovals(sourceResults) {
 }
 
 function pickActiveTimesheets(timesheets) {
-  const parentReviewSheets = timesheets.filter((sheet) => Number(sheet?.State) === 2);
-  if (parentReviewSheets.length) return parentReviewSheets;
-  const openCurrent = timesheets.filter((sheet) => Number(sheet?.State) === 1 && Number(sheet?.VisitCount || 0) > 0);
-  if (openCurrent.length) return openCurrent;
+  const active = timesheets.filter((sheet) => Number(sheet?.VisitCount || 0) > 0 && ![7, 8].includes(Number(sheet?.State)));
+  if (active.length) return active.slice(0, 1);
   return timesheets.slice(0, 1);
 }
 

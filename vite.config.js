@@ -12,11 +12,16 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use('/api/summary', async (req, res) => {
           try {
-            const [damubala, artsport, qosymsha] = await Promise.all([
+            const settled = await Promise.allSettled([
               getDamubalaSummary(),
               getArtsportSummary(),
               getQosymshaSummary()
             ]);
+            const [damubala, artsport, qosymsha] = settled.map((result, index) => {
+              if (result.status === 'fulfilled') return result.value;
+              const source = ['damubala', 'artsport', 'qosymsha'][index];
+              return { ok: false, source, cities: [], errors: [result.reason?.message || `Ошибка ${source}`] };
+            });
             const payload = {
               ok: damubala.ok || artsport.ok || qosymsha.ok,
               source: [

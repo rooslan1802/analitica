@@ -630,7 +630,95 @@ function ApprovalCard({ city }) {
   );
 }
 
+function ApprovalCityCard({ city, loading, onClick }) {
+  const approval = city.approval;
+  const isStub = city.platform === 'ArtSport' || !approval;
+  const progress = approval?.progress || 0;
+  const primaryStatus = approval?.statusCounts?.[0];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-[24px] border border-line bg-panel/70 p-4 text-left shadow-panel transition active:scale-[0.99]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${isStub ? 'border-sky/20 bg-sky/10 text-sky' : 'border-mint/20 bg-mint/10 text-mint'}`}>
+            <PlatformLogo platform={city.platform || approval?.platform} size="sm" />
+            {city.platform || approval?.platform}
+          </div>
+          <h3 className="mt-3 truncate text-xl font-bold">{city.name}</h3>
+          <p className="mt-1 line-clamp-2 text-sm leading-5 text-white/48">
+            {isStub ? 'Согласования добавим позже' : approval.headline}
+          </p>
+        </div>
+        <div className="text-right">
+          <div className={`text-3xl font-black ${isStub ? 'text-white/36' : 'text-mint'}`}>
+            <LoadingNumber loading={loading}>{progress}</LoadingNumber>%
+          </div>
+          <div className="text-[11px] text-white/38">готово</div>
+        </div>
+      </div>
+
+      <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10">
+        <motion.div
+          className={`h-full rounded-full ${isStub ? 'bg-white/20' : 'bg-gradient-to-r from-mint to-sky'}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 0.75, ease: 'easeOut' }}
+        />
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+        <span className="text-white/38">
+          {isStub ? 'пока заглушка' : `${approval.completed || 0} из ${approval.total || 0} рассмотрено`}
+        </span>
+        {primaryStatus ? (
+          <span className={`rounded-full border px-2 py-1 font-bold ${toneClasses(primaryStatus.tone)}`}>
+            {primaryStatus.count} {primaryStatus.label}
+          </span>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function ApprovalDetailModal({ city, onClose }) {
+  if (!city) return null;
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end bg-black/62 px-3 pb-3 backdrop-blur-sm"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.section
+        initial={{ y: 40 }}
+        animate={{ y: 0 }}
+        exit={{ y: 40 }}
+        transition={{ type: 'spring', stiffness: 360, damping: 34 }}
+        className="mx-auto max-h-[86vh] w-full max-w-md overflow-y-auto rounded-[28px] border border-line bg-night p-3 shadow-panel"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between px-2 pt-2">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-white/35">Согласования</p>
+            <h2 className="mt-1 text-xl font-bold">{city.name}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-2xl bg-white/[0.06] text-white/62">
+            <X size={20} />
+          </button>
+        </div>
+        <ApprovalCard city={city} />
+      </motion.section>
+    </motion.div>
+  );
+}
+
 function ApprovalsPage({ cities, loading, updatedAt }) {
+  const [selectedApprovalCity, setSelectedApprovalCity] = useState(null);
   const approvalCities = cities.filter((city) => city.status === 'active');
   const liveApprovals = approvalCities.filter((city) => city.approval);
   const total = liveApprovals.reduce((sum, city) => sum + Number(city.approval?.total || 0), 0);
@@ -674,9 +762,14 @@ function ApprovalsPage({ cities, loading, updatedAt }) {
 
       <div className="mt-4 grid gap-3">
         {approvalCities.map((city) => (
-          <ApprovalCard key={city.id} city={city} />
+          <ApprovalCityCard key={city.id} city={city} loading={loading} onClick={() => setSelectedApprovalCity(city)} />
         ))}
       </div>
+      <AnimatePresence>
+        {selectedApprovalCity ? (
+          <ApprovalDetailModal city={selectedApprovalCity} onClose={() => setSelectedApprovalCity(null)} />
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

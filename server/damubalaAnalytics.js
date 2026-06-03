@@ -241,6 +241,18 @@ function countParentStatuses(history) {
   );
 }
 
+function countSheetParents(sheet, history) {
+  const parentsCount = Number(sheet?.parentsCount || 0);
+  const signedParentsCount = Number(sheet?.signedParentsCount || 0);
+  if (parentsCount > 0) {
+    return {
+      signed: signedParentsCount,
+      unsigned: Math.max(parentsCount - signedParentsCount, 0)
+    };
+  }
+  return countParentStatuses(history);
+}
+
 function childName(item) {
   return [item?.childLastName, item?.childFirstName, item?.childMiddleName]
     .map((value) => String(value || '').trim())
@@ -418,7 +430,7 @@ async function countAccount(account) {
     if (!city) return;
 
     const history = await getSignatureHistory(attendanceId, headers);
-    const counts = countParentStatuses(history);
+    const counts = countSheetParents(sheet, history);
     const record = cityMap.get(city.id);
     addApprovalSheet(record, sheet);
     record.signed += counts.signed;
