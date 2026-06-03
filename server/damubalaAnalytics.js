@@ -33,6 +33,7 @@ function jsonHeaders(token) {
   return {
     accept: 'application/json, text/plain, */*',
     'cache-control': 'no-cache',
+    expires: '0',
     'content-type': 'application/json',
     pragma: 'no-cache',
     ...(token ? { authorization: `Bearer ${token}` } : {})
@@ -191,7 +192,10 @@ async function getActiveTimeSheets(headers) {
 
 async function getActCounts(headers) {
   try {
-    const response = await apiRequest('/v1/Act/GetCount', {
+    const params = new URLSearchParams({
+      hCourseDirectionId: '0'
+    });
+    const response = await apiRequest(`/v1/Act/GetCount?${params.toString()}`, {
       method: 'GET',
       headers
     }, 30000);
@@ -202,6 +206,18 @@ async function getActCounts(headers) {
   }
 }
 
+function pickRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.result)) return payload.result;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.records)) return payload.records;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload?.data?.result)) return payload.data.result;
+  if (Array.isArray(payload?.result?.data)) return payload.result.data;
+  return [];
+}
+
 async function getActs(headers) {
   const pageSize = 100;
   const all = [];
@@ -209,7 +225,8 @@ async function getActs(headers) {
   for (let page = 1; page <= 20; page += 1) {
     const params = new URLSearchParams({
       PageNumber: String(page),
-      PageSize: String(pageSize)
+      PageSize: String(pageSize),
+      hCourseDirectionId: '0'
     });
     const response = await apiRequest(`/v1/Act/Get?${params.toString()}`, {
       method: 'GET',
@@ -217,7 +234,7 @@ async function getActs(headers) {
     }, 30000);
     if (!response.ok) break;
     const data = await readJson(response);
-    const rows = Array.isArray(data?.data) ? data.data : [];
+    const rows = pickRows(data);
     if (!rows.length) break;
     all.push(...rows);
     if (rows.length < pageSize) break;
@@ -349,11 +366,53 @@ const DAMUBALA_ACT_STATUS_META = [
   { key: 'rejected', id: 'rejected', label: 'Отказанные', tone: 'coral' }
 ];
 
+const DAMUBALA_ACT_COUNT_ALIASES = {
+  allActsCount: ['allActsCount', 'allActs', 'all', 'total', 'count'],
+  waitingForDocument: ['waitingForDocument', 'waitingFileActs', 'waitingFile', 'waitingDocument'],
+  checkESF: ['checkESF', 'checkEsf', 'actESFStatusSuppl', 'actEsfStatusSuppl'],
+  notSigned: ['notSigned', 'waitingOperatorActs', 'waitingOperator', 'onSigning'],
+  done: ['done', 'completed', 'finished', 'approve', 'approved'],
+  rejected: ['rejected', 'denied', 'refused']
+};
+
 function getEmptyActCounts() {
   return DAMUBALA_ACT_STATUS_META.reduce((acc, status) => {
     acc[status.key] = 0;
     return acc;
   }, {});
+}
+
+function unwrapPayload(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  if (payload.data && !Array.isArray(payload.data) && typeof payload.data === 'object') return unwrapPayload(payload.data);
+  if (payload.result && !Array.isArray(payload.result) && typeof payload.result === 'object') return unwrapPayload(payload.result);
+  return payload;
+}
+
+function readNumberByAliases(payload, aliases) {
+  for (const alias of aliases) {
+    if (payload?.[alias] !== undefined && payload?.[alias] !== null) {
+      const value = Number(payload[alias]);
+      if (Number.isFinite(value)) return value;
+    }
+
+    const lowerAlias = alias.toLowerCase();
+    const matchedKey = Object.keys(payload || {}).find((key) => key.toLowerCase() === lowerAlias);
+    if (matchedKey) {
+      const value = Number(payload[matchedKey]);
+      if (Number.isFinite(value)) return value;
+    }
+  }
+  return 0;
+}
+
+function normalizeActCounts(payload) {
+  const data = unwrapPayload(payload);
+  const counts = getEmptyActCounts();
+  for (const status of DAMUBALA_ACT_STATUS_META) {
+    counts[status.key] = readNumberByAliases(data, DAMUBALA_ACT_COUNT_ALIASES[status.key] || [status.key]);
+  }
+  return counts;
 }
 
 function hasAnyActCount(counts) {
@@ -377,7 +436,7 @@ function countActsByStatus(acts) {
 }
 
 async function getReliableActCounts(headers) {
-  const counts = await getActCounts(headers);
+  const counts = normalizeActCounts(await getActCounts(headers));
   if (hasAnyActCount(counts)) return counts;
 
   try {
