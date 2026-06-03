@@ -527,6 +527,78 @@ function ApprovalStatusPill({ status }) {
   );
 }
 
+function ApprovalActionButton({ city, approval, onRefresh }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+  const readyToSubmit = Number(approval?.readyToSubmit || 0);
+  const isDamubala = platformKey(approval?.platform || city.platform) === 'damubala';
+
+  async function submitReadySheets() {
+    if (!readyToSubmit || isSubmitting) return;
+    const confirmed = window.confirm(`Отправить ${readyToSubmit} полных табелей на рассмотрение оператору?`);
+    if (!confirmed) return;
+
+    setIsSubmitting(true);
+    setMessage('');
+    try {
+      const response = await fetch('/api/damubala-submit-full', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cityId: city.id })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 207) {
+        throw new Error(data?.message || 'Не удалось отправить табеля');
+      }
+      const sentCount = data?.submitted?.length || 0;
+      setMessage(sentCount ? `Отправлено: ${sentCount}` : 'Готовых табелей уже нет');
+      await onRefresh?.();
+    } catch (error) {
+      setMessage(error?.message || 'Не удалось отправить');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (!isDamubala) {
+    return (
+      <div className="mt-4 rounded-2xl border border-line bg-white/[0.035] p-3">
+        <p className="text-xs uppercase tracking-[0.14em] text-white/35">Следующий шаг</p>
+        <p className="mt-1 text-sm font-semibold text-white/82">{approval.nextAction}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-line bg-white/[0.035] p-3">
+      <p className="text-xs uppercase tracking-[0.14em] text-white/35">Действие</p>
+      <button
+        type="button"
+        onClick={submitReadySheets}
+        disabled={!readyToSubmit || isSubmitting}
+        className={`mt-2 flex w-full items-center justify-between gap-3 rounded-2xl border px-3 py-3 text-left transition active:scale-[0.99] ${
+          readyToSubmit
+            ? 'border-mint/30 bg-mint/14 text-mint shadow-halo'
+            : 'border-white/10 bg-white/[0.035] text-white/42'
+        }`}
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-black leading-5">
+            {isSubmitting ? 'Отправляю табеля...' : 'Отправить полные табеля на рассмотрение'}
+          </span>
+          <span className="mt-0.5 block text-xs text-white/48">
+            {readyToSubmit ? 'Все родители подписали' : approval.nextAction}
+          </span>
+        </span>
+        <span className="grid h-10 min-w-10 place-items-center rounded-2xl bg-white/10 px-3 text-lg font-black">
+          {isSubmitting ? <RefreshCw size={18} className="animate-spin" /> : readyToSubmit}
+        </span>
+      </button>
+      {message ? <p className="mt-2 text-xs text-white/48">{message}</p> : null}
+    </div>
+  );
+}
+
 function ApprovalMiniSheet({ sheet }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-white/[0.035] px-3 py-2">
@@ -541,10 +613,12 @@ function ApprovalMiniSheet({ sheet }) {
   );
 }
 
-function ApprovalCard({ city }) {
+function ApprovalCard({ city, onRefresh }) {
   const approval = city.approval;
   const isStub = city.platform === 'ArtSport' || !approval;
   const progress = approval?.progress || 0;
+  const actStatusCounts = approval?.actStatusCounts || [];
+  const showPlainSheets = platformKey(approval?.platform || city.platform) !== 'damubala' || !actStatusCounts.length;
 
   if (isStub) {
     return (
@@ -598,10 +672,20 @@ function ApprovalCard({ city }) {
         ))}
       </div>
 
-      <div className="mt-4 rounded-2xl border border-line bg-white/[0.035] p-3">
-        <p className="text-xs uppercase tracking-[0.14em] text-white/35">Следующий шаг</p>
-        <p className="mt-1 text-sm font-semibold text-white/82">{approval.nextAction}</p>
-      </div>
+      <ApprovalActionButton city={city} approval={approval} onRefresh={onRefresh} />
+
+      {actStatusCounts.length ? (
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs uppercase tracking-[0.14em] text-white/35">Акты организации</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {actStatusCounts.map((status) => (
+              <ApprovalStatusPill key={status.id} status={status} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {approval.sources?.length ? (
         <div className="mt-3 grid gap-2">
@@ -619,13 +703,13 @@ function ApprovalCard({ city }) {
             </div>
           ))}
         </div>
-      ) : (
+      ) : showPlainSheets ? (
         <div className="mt-3 grid gap-2">
           {(approval.sheets || []).slice(0, 4).map((sheet) => (
             <ApprovalMiniSheet key={sheet.id} sheet={sheet} />
           ))}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -684,7 +768,7 @@ function ApprovalCityCard({ city, loading, onClick }) {
   );
 }
 
-function ApprovalDetailModal({ city, onClose }) {
+function ApprovalDetailModal({ city, onClose, onRefresh }) {
   if (!city) return null;
   return (
     <motion.div
@@ -711,13 +795,13 @@ function ApprovalDetailModal({ city, onClose }) {
             <X size={20} />
           </button>
         </div>
-        <ApprovalCard city={city} />
+        <ApprovalCard city={city} onRefresh={onRefresh} />
       </motion.section>
     </motion.div>
   );
 }
 
-function ApprovalsPage({ cities, loading, updatedAt }) {
+function ApprovalsPage({ cities, loading, updatedAt, onRefresh }) {
   const [selectedApprovalCity, setSelectedApprovalCity] = useState(null);
   const approvalCities = cities.filter((city) => city.status === 'active');
   const liveApprovals = approvalCities.filter((city) => city.approval);
@@ -725,6 +809,12 @@ function ApprovalsPage({ cities, loading, updatedAt }) {
   const completed = liveApprovals.reduce((sum, city) => sum + Number(city.approval?.completed || 0), 0);
   const readyForActs = liveApprovals.reduce((sum, city) => sum + Number(city.approval?.readyForActs || 0), 0);
   const percent = Math.round((completed / Math.max(total, 1)) * 100);
+
+  useEffect(() => {
+    if (!selectedApprovalCity) return;
+    const freshCity = cities.find((city) => city.id === selectedApprovalCity.id);
+    if (freshCity && freshCity !== selectedApprovalCity) setSelectedApprovalCity(freshCity);
+  }, [cities, selectedApprovalCity]);
 
   return (
     <div className="mt-5">
@@ -767,7 +857,7 @@ function ApprovalsPage({ cities, loading, updatedAt }) {
       </div>
       <AnimatePresence>
         {selectedApprovalCity ? (
-          <ApprovalDetailModal city={selectedApprovalCity} onClose={() => setSelectedApprovalCity(null)} />
+          <ApprovalDetailModal city={selectedApprovalCity} onClose={() => setSelectedApprovalCity(null)} onRefresh={onRefresh} />
         ) : null}
       </AnimatePresence>
     </div>
@@ -954,7 +1044,7 @@ function App() {
             </div>
           </>
         ) : (
-          <ApprovalsPage cities={cities} loading={isLoading} updatedAt={isLoading ? 'обновляю...' : updatedAt} />
+          <ApprovalsPage cities={cities} loading={isLoading} updatedAt={isLoading ? 'обновляю...' : updatedAt} onRefresh={() => loadSummary(true)} />
         )}
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md px-4 pb-[max(.75rem,env(safe-area-inset-bottom))]">

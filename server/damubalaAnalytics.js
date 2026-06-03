@@ -189,6 +189,15 @@ async function getActiveTimeSheets(headers) {
   return all;
 }
 
+async function getActCounts(headers) {
+  const response = await apiRequest('/v1/Act/GetCount', {
+    method: 'GET',
+    headers
+  }, 30000);
+  if (!response.ok) return null;
+  return readJson(response);
+}
+
 async function getSignatureHistory(attendanceId, headers) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const response = await apiRequest(`/v1/timeSheet/GetSignatureHistoryV2/${attendanceId}`, {
@@ -303,6 +312,25 @@ const DAMUBALA_STATUS_META = {
   review_operator_success: { id: 'approved', label: 'Согласован оператором', tone: 'mint', step: 3 }
 };
 
+const DAMUBALA_ACT_STATUS_META = [
+  { key: 'allActsCount', id: 'all', label: 'Все акты', tone: 'sky' },
+  { key: 'waitingForDocument', id: 'waiting-document', label: 'Ожидает прикрепления ЭСФ', tone: 'amber' },
+  { key: 'checkESF', id: 'check-esf', label: 'Согласование специалистом', tone: 'sky' },
+  { key: 'notSigned', id: 'not-signed', label: 'На подписании', tone: 'coral' },
+  { key: 'done', id: 'done', label: 'Завершенные', tone: 'mint' },
+  { key: 'rejected', id: 'rejected', label: 'Отказанные', tone: 'coral' }
+];
+
+function formatActStatusCounts(counts) {
+  if (!counts || typeof counts !== 'object') return [];
+  return DAMUBALA_ACT_STATUS_META.map((status) => ({
+    id: status.id,
+    label: status.label,
+    tone: status.tone,
+    count: Number(counts[status.key] || 0)
+  }));
+}
+
 function getSheetStatus(sheet) {
   const status = sheet?.hVisitHistoryStatus || {};
   const code = status.code || `status_${status.id || 'unknown'}`;
@@ -322,6 +350,9 @@ function createApprovalBucket(platform) {
     total: 0,
     completed: 0,
     readyForActs: 0,
+    readyToSubmit: 0,
+    readyToSubmitSheets: [],
+    actStatusCounts: [],
     currentStep: 0,
     statusCounts: [],
     sheets: []
@@ -344,14 +375,25 @@ function addApprovalSheet(record, sheet) {
     approval.completed += 1;
     approval.readyForActs += 1;
   }
+  const parentsCount = Number(sheet?.parentsCount || 0);
+  const signedParentsCount = Number(sheet?.signedParentsCount || 0);
+  if (status.id === 'parents' && parentsCount > 0 && signedParentsCount >= parentsCount) {
+    approval.readyToSubmit += 1;
+    approval.readyToSubmitSheets.push({
+      id: sheet?.id,
+      period: `${String(sheet?.month || '').padStart(2, '0')}.${sheet?.year || ''}`,
+      signedParentsCount,
+      parentsCount
+    });
+  }
   approval.sheets.push({
     id: sheet?.id,
     period: `${String(sheet?.month || '').padStart(2, '0')}.${sheet?.year || ''}`,
     statusId: status.id,
     status: status.label,
     tone: status.tone,
-    signedParentsCount: sheet?.signedParentsCount || 0,
-    parentsCount: sheet?.parentsCount || 0
+    signedParentsCount,
+    parentsCount
   });
 }
 
@@ -372,7 +414,9 @@ function finalizeApproval(approval) {
         : parents
           ? 'Есть табели на согласовании у родителей'
           : 'Статусы табелей обновлены',
-    nextAction: ready
+    nextAction: approval.readyToSubmit > 0
+      ? 'Есть полные табеля для отправки оператору'
+      : ready
       ? 'Можно выставлять акты'
       : operator
         ? 'Ждем рассмотрение оператора'
@@ -402,7 +446,11 @@ async function mapWithConcurrency(items, limit, mapper) {
 async function countAccount(account) {
   const auth = await signInWithFallback(account);
   const headers = jsonHeaders(auth.token);
-  const sheets = await getActiveTimeSheets(headers);
+  const [sheets, actCounts] = await Promise.all([
+    getActiveTimeSheets(headers),
+    getActCounts(headers)
+  ]);
+  const actStatusCounts = formatActStatusCounts(actCounts);
 
   const cityMap = new Map(
     account.cities.map((city) => [
@@ -416,7 +464,10 @@ async function countAccount(account) {
         totalSheets: 0,
         unsignedChildren: [],
         signedChildren: [],
-        approval: createApprovalBucket('Damubala'),
+        approval: {
+          ...createApprovalBucket('Damubala'),
+          actStatusCounts
+        },
         passwordUpdated: auth.passwordUpdated
       }
     ])
@@ -483,6 +534,68 @@ export async function getDamubalaSummary() {
       minute: '2-digit'
     }),
     cities,
+    errors
+  };
+}
+
+function findAccountByCity(cityId) {
+  return getAccounts().find((account) => account.cities.some((city) => city.id === cityId));
+}
+
+function filterReadyToSubmitSheets(sheets, account, cityId) {
+  const city = account.cities.find((item) => item.id === cityId);
+  if (!city) return [];
+  return sheets.filter((sheet) => {
+    const status = getSheetStatus(sheet);
+    const parentsCount = Number(sheet?.parentsCount || 0);
+    const signedParentsCount = Number(sheet?.signedParentsCount || 0);
+    return (
+      sheet?.id &&
+      status.id === 'parents' &&
+      parentsCount > 0 &&
+      signedParentsCount >= parentsCount &&
+      matchesRegion(pickRegionName(sheet), city.region)
+    );
+  });
+}
+
+async function sendSheetToOperator(attendanceId, headers) {
+  const response = await apiRequest(`/v1/timeSheet/SendToOperator?attendanceId=${encodeURIComponent(attendanceId)}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({})
+  }, 30000);
+  if (response.ok) return { ok: true, id: attendanceId };
+  const data = await readJson(response);
+  return {
+    ok: false,
+    id: attendanceId,
+    status: response.status,
+    message: data?.message || data?.error || 'Не удалось отправить табель'
+  };
+}
+
+export async function submitFullDamubalaSheets(cityId) {
+  const account = findAccountByCity(cityId);
+  if (!account) {
+    const error = new Error('Город Damubala не найден');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const auth = await signInWithFallback(account);
+  const headers = jsonHeaders(auth.token);
+  const sheets = await getActiveTimeSheets(headers);
+  const readySheets = filterReadyToSubmitSheets(sheets, account, cityId);
+  const results = await mapWithConcurrency(readySheets, 2, (sheet) => sendSheetToOperator(sheet.id, headers));
+  const submitted = results.filter((result) => result.ok).map((result) => result.id);
+  const errors = results.filter((result) => !result.ok);
+
+  return {
+    ok: errors.length === 0,
+    cityId,
+    found: readySheets.length,
+    submitted,
     errors
   };
 }

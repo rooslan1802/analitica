@@ -1,8 +1,29 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { getDamubalaSummary } from './server/damubalaAnalytics.js';
+import { getDamubalaSummary, submitFullDamubalaSheets } from './server/damubalaAnalytics.js';
 import { getArtsportSummary } from './server/artsportAnalytics.js';
 import { getQosymshaSummary } from './server/qosymshaAnalytics.js';
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => {
+      if (!body) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
 export default defineConfig({
   plugins: [
@@ -49,6 +70,28 @@ export default defineConfig({
             res.statusCode = 500;
             res.setHeader('content-type', 'application/json; charset=utf-8');
             res.end(JSON.stringify({ ok: false, message: error?.message || 'Ошибка Damubala' }));
+          }
+        });
+        server.middlewares.use('/api/damubala-submit-full', async (req, res) => {
+          if (req.method !== 'POST') {
+            res.statusCode = 405;
+            res.setHeader('allow', 'POST');
+            res.setHeader('content-type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ ok: false, message: 'Метод не поддерживается' }));
+            return;
+          }
+
+          try {
+            const body = await readBody(req);
+            const result = await submitFullDamubalaSheets(body.cityId);
+            res.statusCode = result.ok ? 200 : 207;
+            res.setHeader('cache-control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('content-type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify(result));
+          } catch (error) {
+            res.statusCode = error?.statusCode || 500;
+            res.setHeader('content-type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ ok: false, message: error?.message || 'Не удалось отправить табеля' }));
           }
         });
       }
